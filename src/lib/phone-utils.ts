@@ -69,14 +69,19 @@ export function extractTransferAmount(text: string): { value: number; raw: strin
   const balanceMarkers = ['رصيد', 'حسابك', 'المتاح', 'الحالي', 'الحالى'];
   const candidates: { value: number; raw: string; score: number }[] = [];
 
+  // Pre-identify phone-number digit ranges (10+ consecutive digits) to exclude
+  const phoneRanges: [number, number][] = [];
+  for (const m of cleaned.matchAll(/\d{10,}/g)) {
+    phoneRanges.push([m.index!, m.index! + m[0].length]);
+  }
+  const isInPhoneRange = (start: number, end: number) =>
+    phoneRanges.some(([ps, pe]) => start >= ps && end <= pe);
+
   for (const m of cleaned.matchAll(/(\d{1,7}(?:[.,]\d{1,2})?)/g)) {
     const value = parseFloat(m[1].replace(',', '.'));
     if (isNaN(value) || value <= 0 || value > 10000000) continue;
-    // Skip numbers that look like phone numbers (10+ consecutive digits around this match)
-    const surroundStart = Math.max(0, m.index! - 2);
-    const surroundEnd = Math.min(cleaned.length, m.index! + m[1].length + 2);
-    const surrounding = cleaned.slice(surroundStart, surroundEnd);
-    if (/\d{10,}/.test(surrounding)) continue;
+    // Skip if this match falls within a phone number digit run
+    if (isInPhoneRange(m.index!, m.index! + m[1].length)) continue;
 
     const ctxStart = Math.max(0, m.index! - 80);
     const ctxEnd = Math.min(cleaned.length, m.index! + m[1].length + 80);
