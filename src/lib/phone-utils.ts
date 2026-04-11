@@ -86,11 +86,15 @@ export function extractTransferAmount(text: string): { value: number; raw: strin
     const ctxStart = Math.max(0, m.index! - 80);
     const ctxEnd = Math.min(cleaned.length, m.index! + m[1].length + 80);
     const context = cleaned.slice(ctxStart, ctxEnd).toLowerCase();
+    // Use a tighter window for negative markers (fee/balance) to avoid false penalties
+    const nearStart = Math.max(0, m.index! - 30);
+    const nearEnd = Math.min(cleaned.length, m.index! + m[1].length + 30);
+    const nearContext = cleaned.slice(nearStart, nearEnd).toLowerCase();
     let score = 0;
     if (currencyMarkers.some(c => context.includes(c))) score += 50;
     if (amountMarkers.some(a => context.includes(a))) score += 40;
-    if (feeMarkers.some(f => context.includes(f))) score -= 60;
-    if (balanceMarkers.some(b => context.includes(b))) score -= 80;
+    if (feeMarkers.some(f => nearContext.includes(f))) score -= 60;
+    if (balanceMarkers.some(b => nearContext.includes(b))) score -= 80;
     if (value >= 100) score += 10;
     candidates.push({ value, raw: m[1], score });
   }
