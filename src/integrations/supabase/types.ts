@@ -14,7 +14,287 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_log: {
+        Row: {
+          action: string
+          entity_id: string
+          entity_type: string
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          performed_at: string | null
+          performed_by: string | null
+        }
+        Insert: {
+          action: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          performed_at?: string | null
+          performed_by?: string | null
+        }
+        Update: {
+          action?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          performed_at?: string | null
+          performed_by?: string | null
+        }
+        Relationships: []
+      }
+      people: {
+        Row: {
+          created_at: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      person_identifiers: {
+        Row: {
+          created_at: string | null
+          id: string
+          identifier_type: string
+          is_primary: boolean | null
+          normalized_value: string
+          person_id: string
+          raw_value: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          identifier_type: string
+          is_primary?: boolean | null
+          normalized_value: string
+          person_id: string
+          raw_value: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          identifier_type?: string
+          is_primary?: boolean | null
+          normalized_value?: string
+          person_id?: string
+          raw_value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_identifiers_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          display_name: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      screenshot_duplicates: {
+        Row: {
+          created_at: string | null
+          duplicate_of_id: string
+          id: string
+          reason: string
+          screenshot_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          duplicate_of_id: string
+          id?: string
+          reason: string
+          screenshot_id: string
+        }
+        Update: {
+          created_at?: string | null
+          duplicate_of_id?: string
+          id?: string
+          reason?: string
+          screenshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "screenshot_duplicates_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_screenshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "screenshot_duplicates_screenshot_id_fkey"
+            columns: ["screenshot_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_screenshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transfer_screenshots: {
+        Row: {
+          accounting_status: string | null
+          approved_amount: number | null
+          auto_matched: boolean | null
+          cleaned_visible_message: string | null
+          created_at: string | null
+          currency: string | null
+          extracted_amount: number | null
+          extracted_phone_normalized: string | null
+          extracted_phone_raw: string | null
+          extraction_error: string | null
+          extraction_provider: string | null
+          extraction_status: string | null
+          filename: string
+          id: string
+          image_fingerprint: string | null
+          match_confidence: number | null
+          match_type: string | null
+          matched_identifier_id: string | null
+          matched_identifier_type: string | null
+          matched_person_id: string | null
+          raw_ocr_text: string | null
+          raw_provider_response: Json | null
+          reject_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_notes: string | null
+          service_fee: number | null
+          storage_path: string
+          transaction_code: string
+          transfer_summary_text: string | null
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          accounting_status?: string | null
+          approved_amount?: number | null
+          auto_matched?: boolean | null
+          cleaned_visible_message?: string | null
+          created_at?: string | null
+          currency?: string | null
+          extracted_amount?: number | null
+          extracted_phone_normalized?: string | null
+          extracted_phone_raw?: string | null
+          extraction_error?: string | null
+          extraction_provider?: string | null
+          extraction_status?: string | null
+          filename: string
+          id?: string
+          image_fingerprint?: string | null
+          match_confidence?: number | null
+          match_type?: string | null
+          matched_identifier_id?: string | null
+          matched_identifier_type?: string | null
+          matched_person_id?: string | null
+          raw_ocr_text?: string | null
+          raw_provider_response?: Json | null
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          service_fee?: number | null
+          storage_path: string
+          transaction_code: string
+          transfer_summary_text?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          accounting_status?: string | null
+          approved_amount?: number | null
+          auto_matched?: boolean | null
+          cleaned_visible_message?: string | null
+          created_at?: string | null
+          currency?: string | null
+          extracted_amount?: number | null
+          extracted_phone_normalized?: string | null
+          extracted_phone_raw?: string | null
+          extraction_error?: string | null
+          extraction_provider?: string | null
+          extraction_status?: string | null
+          filename?: string
+          id?: string
+          image_fingerprint?: string | null
+          match_confidence?: number | null
+          match_type?: string | null
+          matched_identifier_id?: string | null
+          matched_identifier_type?: string | null
+          matched_person_id?: string | null
+          raw_ocr_text?: string | null
+          raw_provider_response?: Json | null
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          service_fee?: number | null
+          storage_path?: string
+          transaction_code?: string
+          transfer_summary_text?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfer_screenshots_matched_identifier_id_fkey"
+            columns: ["matched_identifier_id"]
+            isOneToOne: false
+            referencedRelation: "person_identifiers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_screenshots_matched_person_id_fkey"
+            columns: ["matched_person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
