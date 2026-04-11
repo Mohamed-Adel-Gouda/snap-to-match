@@ -15,6 +15,105 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// ── Arabic digit conversion & validation ──
+
+const ARABIC_TO_LATIN: Record<string, string> = {
+  '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+  '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+  '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+};
+
+function arabicToLatin(s: string): string {
+  if (!s) return '';
+  return s.replace(/[٠-٩۰-۹]/g, d => ARABIC_TO_LATIN[d] || d);
+}
+
+function stripRtlMarks(s: string): string {
+  if (!s) return '';
+  return s.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
+}
+
+function normalizeEgyptianPhone(raw: string): string {
+  if (!raw) return '';
+  let s = arabicToLatin(stripRtlMarks(String(raw)));
+  s = s.replace(/[^\d+]/g, '').replace(/^\+/, '');
+  if (s.startsWith('200') && s.length === 13) s = s.slice(2);
+  if (s.startsWith('20') && s.length === 12) s = '0' + s.slice(2);
+  if (/^1[0125]\d{8}$/.test(s)) s = '0' + s;
+  return s;
+}
+
+function isValidEgyptianMobile(s: string): boolean {
+  return /^01[0125]\d{8}$/.test(s);
+}
+
+function hardenExtraction(claudeOutput: any) {
+  const out = { ...claudeOutput };
+
+  // Force every phone number through the normalizer
+  if (Array.isArray(out.phoneNumbers)) {
+    out.phoneNumbers = out.phoneNumbers
+      .filter((p: any) => typeof p === 'string')
+      .map((p: string) => stripRtlMarks(p));
+  } else {
+    out.phoneNumbers = [];
+  }
+
+  // Always re-normalize from phoneNumbers
+  const normalized = out.phoneNumbers
+    .map(normalizeEgyptianPhone)
+    .filter(isValidEgyptianMobile);
+
+  if (Array.isArray(out.normalizedPhoneNumbers)) {
+    for (const p of out.normalizedPhoneNumbers) {
+      if (typeof p !== 'string') continue;
+      const fixed = normalizeEgyptianPhone(p);
+      if (isValidEgyptianMobile(fixed) && !normalized.includes(fixed)) {
+        normalized.push(fixed);
+      }
+    }
+  }
+  out.normalizedPhoneNumbers = Array.from(new Set(normalized));
+
+  // Force amount to Latin digits
+  if (typeof out.amount === 'string') {
+    out.amount = arabicToLatin(out.amount).replace(/[^\d.,]/g, '');
+  }
+  if (typeof out.amountNumeric === 'number' && !isNaN(out.amountNumeric)) {
+    // OK
+  } else if (typeof out.amount === 'string' && out.amount) {
+    const parsed = parseFloat(out.amount.replace(/,/g, ''));
+    out.amountNumeric = isNaN(parsed) ? null : parsed;
+  } else {
+    out.amountNumeric = null;
+  }
+
+  // Force serviceFee to Latin
+  if (typeof out.serviceFee === 'string') {
+    out.serviceFee = arabicToLatin(out.serviceFee).replace(/[^\d.,]/g, '');
+  }
+
+  // Force cleanedVisibleMessage to use Latin digits
+  if (typeof out.cleanedVisibleMessage === 'string') {
+    out.cleanedVisibleMessage = arabicToLatin(stripRtlMarks(out.cleanedVisibleMessage));
+  }
+
+  // Sanity: amount equals fee?
+  if (out.amountNumeric != null && out.serviceFee && parseFloat(out.serviceFee) > 0 && out.amountNumeric === parseFloat(out.serviceFee)) {
+    out.notes = [...(out.notes || []), 'WARNING: amount equals service fee — possible fee/amount confusion'];
+    out.confidence = Math.min(out.confidence || 50, 50);
+  }
+
+  if (out.normalizedPhoneNumbers.length === 0 && out.phoneNumbers.length > 0) {
+    out.notes = [...(out.notes || []), 'WARNING: phone numbers detected but none normalized to valid Egyptian format'];
+  }
+
+  return out;
+}
+
+// ── Tool definition ──
+
 const EXTRACTION_TOOL = {
   type: "function" as const,
   function: {
@@ -24,12 +123,12 @@ const EXTRACTION_TOOL = {
       type: "object",
       properties: {
         rawText: { type: "string", description: "Full visible text from the image" },
-        phoneNumbers: { type: "array", items: { type: "string" }, description: "All phone numbers as they appear" },
-        normalizedPhoneNumbers: { type: "array", items: { type: "string" }, description: "11-digit Egyptian format starting with 0" },
-        amount: { type: "string", description: "Primary transfer amount as string" },
+        phoneNumbers: { type: "array", items: { type: "string" }, description: "All phone numbers as they appear (original form)" },
+        normalizedPhoneNumbers: { type: "array", items: { type: "string" }, description: "11-digit Egyptian format starting with 0, Latin digits only" },
+        amount: { type: "string", description: "Primary transfer amount as string, Latin digits only" },
         amountNumeric: { type: "number", description: "Primary transfer amount as number" },
         currency: { type: "string", description: "Currency code" },
-        serviceFee: { type: "string", description: "Service fee amount" },
+        serviceFee: { type: "string", description: "Service fee amount, Latin digits only" },
         cleanedVisibleMessage: { type: "string", description: "Readable cleaned message text with English digits" },
         transferSummaryText: { type: "string", description: "One-line English summary" },
         confidence: { type: "number", description: "0-100" },
@@ -39,27 +138,74 @@ const EXTRACTION_TOOL = {
   },
 };
 
-const SYSTEM_PROMPT = `You are an extraction system for Egyptian mobile wallet and bank transfer screenshots AND photos of feature phone screens (Nokia, etc.) showing Vodafone Cash, Etisalat Cash, Orange Cash, or bank SMS confirmations.
+// ── System prompt ──
 
-Images may be:
-- Clean screenshots from a smartphone app
-- Real photos of a physical phone screen (with glare, blur, fingers holding the phone, dark backgrounds with bright text)
-- Arabic text with Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) that MUST be converted to English (0123456789)
+const SYSTEM_PROMPT = `You are a specialized Arabic OCR and extraction system for Egyptian mobile wallet and bank transfer evidence. The images you process are:
 
-Critical rules for digits:
-- Arabic-Indic ٠١٢٣٤٥٦٧٨٩ MUST be converted to English 0123456789 in ALL numeric fields.
-- ٥٠٠٠ = 5000, ٠١٠١٣٨٨٨٣٦٨ = 01013888368
+1. Real photos of physical feature phones (Nokia 105, Nokia 130, etc.) held in someone's hand, often with:
+   - low resolution and small bright screen text on dark background
+   - glare, reflection, finger occlusion, perspective distortion, motion blur
+   - tiny Arabic script that is hard to read
+   - Arabic-Indic digits ٠١٢٣٤٥٦٧٨٩ — NOT Latin digits
 
-Critical rules for the amount:
-- The primary transfer amount is near "تم تحويل", "تحويل", "مبلغ", "sent", "transferred", followed by "جنيه" / "EGP".
-- DO NOT select a service fee as the amount. Service fees are near "مصاريف الخدمة", "رسوم", "fee". Put these in serviceFee.
-- DO NOT select the balance (near "رصيد") as the amount.
+2. Smartphone screenshots from Vodafone Cash, Etisalat Cash, Orange Cash, We Pay, Instapay, CIB, NBE, QNB, and bank SMS confirmations
 
-Critical rules for phone numbers:
-- Extract every phone-looking number visible. Look near "لرقم", "رقم", "VF-Cash", "محفظة".
-- Normalize to 11 digits starting with 0: ٠١٠١٣٨٨٨٣٦٨ → 01013888368, +201013888368 → 01013888368.
+3. Mixed Arabic + English screens
 
-Call the record_transfer_extraction tool exactly once with all extracted fields. Use null for what you cannot determine. Never invent values.`;
+CRITICAL DIGIT CONVERSION RULES — APPLY TO EVERY NUMERIC FIELD:
+
+The image will almost always contain Arabic-Indic digits, not Latin digits. You MUST convert them to English Latin digits in every numeric output field. This is non-negotiable.
+
+Mapping table (memorize this):
+٠ = 0, ١ = 1, ٢ = 2, ٣ = 3, ٤ = 4, ٥ = 5, ٦ = 6, ٧ = 7, ٨ = 8, ٩ = 9
+
+Apply this conversion to: phoneNumbers entries (keep original Arabic form for audit in phoneNumbers, but normalizedPhoneNumbers MUST be pure Latin digits), amount, amountNumeric, serviceFee, cleanedVisibleMessage.
+
+NEVER leave Arabic-Indic digits in normalizedPhoneNumbers, amount, amountNumeric, serviceFee, or cleanedVisibleMessage.
+
+Worked example — if the image shows:
+"تم تحويل ٥٠٠٠ جنيه لرقم ٠١٠١٣٨٨٨٣٦٨ مصاريف الخدمة ٠ جنيه رصيد حسابك فى فودافون كاش الحالى ٣١٦٠٣.٤٧"
+
+Your tool call MUST be:
+{
+  "rawText": "تم تحويل ٥٠٠٠ جنيه لرقم ٠١٠١٣٨٨٨٣٦٨ مصاريف الخدمة ٠ جنيه رصيد حسابك فى فودافون كاش الحالى ٣١٦٠٣.٤٧",
+  "phoneNumbers": ["٠١٠١٣٨٨٨٣٦٨"],
+  "normalizedPhoneNumbers": ["01013888368"],
+  "amount": "5000",
+  "amountNumeric": 5000,
+  "currency": "EGP",
+  "serviceFee": "0",
+  "cleanedVisibleMessage": "تم تحويل 5000 جنيه لرقم 01013888368 مصاريف الخدمة 0 جنيه رصيد حسابك فى فودافون كاش الحالى 31603.47",
+  "transferSummaryText": "Transferred 5000 EGP to 01013888368 via Vodafone Cash, fee 0, balance 31603.47",
+  "confidence": 95
+}
+
+CRITICAL AMOUNT RULES:
+The primary transfer amount is near: تم تحويل, تحويل, مبلغ, ارسلت, حول, دفع — followed by جنيه / ج.م / EGP / LE.
+The service fee is SEPARATE and near: مصاريف الخدمة, رسوم, عمولة, خدمة, ضريبة — DO NOT confuse it with the amount.
+The balance is near: رصيد, حسابك, المتاح, الحالي — NEVER select it as the amount.
+
+CRITICAL PHONE NUMBER RULES:
+Egyptian mobile: 11 digits starting with 01 followed by 0, 1, 2, or 5.
+In Arabic-Indic: ٠١٠xxxxxxxx, ٠١١xxxxxxxx, ٠١٢xxxxxxxx, ٠١٥xxxxxxxx.
+Look near: لرقم, رقم, المحفظة, محفظة, للعميل, المستفيد, المستلم, VF-Cash, Vodafone Cash.
+
+Normalization for normalizedPhoneNumbers:
+1. Convert Arabic-Indic to Latin
+2. Strip spaces, dashes, parentheses, plus signs
+3. +20/20 prefix → strip to get 0-prefixed 11-digit number
+4. 10 digits starting with 1 → prepend 0
+5. Final: exactly 11 digits starting with 01
+
+CLEANED VISIBLE MESSAGE: Merge all lines, convert ALL digits to Latin, keep Arabic words, remove OCR noise.
+
+CONFIDENCE: 95-100 clear, 85-94 minor blur, 70-84 some ambiguity, 50-69 uncertain, <50 too unclear.
+
+NEVER invent values. If unclear, return null and lower confidence.
+
+Call the record_transfer_extraction tool exactly once.`;
+
+// ── Main handler ──
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -88,7 +234,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get base64 either from request or by downloading from storage
+    // Get base64 from storage or request
     let base64Data = imageBase64;
     if (!base64Data && storagePath) {
       const { data: fileData, error: downloadError } = await supabase.storage
@@ -113,7 +259,7 @@ Deno.serve(async (req) => {
       base64Data = uint8ArrayToBase64(bytes);
     }
 
-    // Call Lovable AI Gateway (Gemini with vision support)
+    // Call Lovable AI Gateway
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -191,6 +337,19 @@ Deno.serve(async (req) => {
       };
     }
 
+    // ── Post-process: harden extraction to fix Arabic digit leaks ──
+    extraction = hardenExtraction(extraction);
+
+    // Debug log
+    console.log('[extract-transfer]', {
+      phoneCount: extraction.normalizedPhoneNumbers.length,
+      primaryPhone: extraction.normalizedPhoneNumbers[0],
+      amount: extraction.amountNumeric,
+      fee: extraction.serviceFee,
+      confidence: extraction.confidence,
+      hasArabicDigitsInOutput: /[٠-٩۰-۹]/.test(JSON.stringify(extraction)),
+    });
+
     // Update the screenshot record in DB
     if (screenshotId) {
       const primaryPhone = extraction.normalizedPhoneNumbers?.[0] || null;
@@ -209,7 +368,7 @@ Deno.serve(async (req) => {
         currency: extraction.currency || "EGP",
       };
 
-      // Try to auto-match
+      // Auto-match
       if (primaryPhone) {
         const { data: matches } = await supabase
           .from("person_identifiers")
@@ -226,7 +385,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Check for same-phone-amount-day duplicates
+      // Duplicate check
       if (primaryPhone && extraction.amountNumeric) {
         const today = new Date().toISOString().slice(0, 10);
         const { data: sameDayDupes } = await supabase

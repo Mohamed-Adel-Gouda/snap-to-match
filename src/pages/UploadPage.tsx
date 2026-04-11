@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { generateImageFingerprint, generateTransactionCode } from "@/lib/phone-utils";
+import { generateImageFingerprint, generateTransactionCode, reinforceExtraction } from "@/lib/phone-utils";
 import { toast } from "sonner";
 
 interface UploadItem {
@@ -89,14 +89,17 @@ export default function UploadPage() {
       }
 
       // Call extraction — send storage path instead of base64 for large files
-      updateItem(idx, { status: "extracting", progress: "Extracting with Claude Vision…" });
+      updateItem(idx, { status: "extracting", progress: "Extracting with AI Vision…" });
       const { data: extractionResult, error: fnError } = await supabase.functions.invoke("extract-transfer", {
         body: { storagePath, mediaType: file.type || "image/jpeg", screenshotId: record.id },
       });
 
       if (fnError) throw fnError;
 
-      updateItem(idx, { status: "done", progress: `Done — ${extractionResult?.transferSummaryText || txCode}` });
+      // Client-side reinforcement: catch any phones/amounts the AI missed
+      const reinforced = reinforceExtraction(extractionResult);
+
+      updateItem(idx, { status: "done", progress: `Done — ${reinforced?.transferSummaryText || txCode}` });
     } catch (err: any) {
       updateItem(idx, { status: "error", progress: "Failed", error: err.message });
       toast.error(`${file.name}: ${err.message}`);
@@ -130,7 +133,7 @@ export default function UploadPage() {
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="status-badge bg-info/10 text-info">Claude Vision</span>
+        <span className="status-badge bg-info/10 text-info">AI Vision</span>
         <span className="text-xs text-muted-foreground">Extraction engine</span>
       </div>
 
