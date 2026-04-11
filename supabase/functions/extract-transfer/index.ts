@@ -5,8 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   const chunkSize = 8192;
   let binary = '';
@@ -17,16 +15,62 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+const EXTRACTION_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "record_transfer_extraction",
+    description: "Record fields extracted from a transfer screenshot.",
+    parameters: {
+      type: "object",
+      properties: {
+        rawText: { type: "string", description: "Full visible text from the image" },
+        phoneNumbers: { type: "array", items: { type: "string" }, description: "All phone numbers as they appear" },
+        normalizedPhoneNumbers: { type: "array", items: { type: "string" }, description: "11-digit Egyptian format starting with 0" },
+        amount: { type: "string", description: "Primary transfer amount as string" },
+        amountNumeric: { type: "number", description: "Primary transfer amount as number" },
+        currency: { type: "string", description: "Currency code" },
+        serviceFee: { type: "string", description: "Service fee amount" },
+        cleanedVisibleMessage: { type: "string", description: "Readable cleaned message text with English digits" },
+        transferSummaryText: { type: "string", description: "One-line English summary" },
+        confidence: { type: "number", description: "0-100" },
+      },
+      required: ["rawText", "phoneNumbers", "normalizedPhoneNumbers", "amount", "amountNumeric", "currency", "serviceFee", "cleanedVisibleMessage", "transferSummaryText", "confidence"],
+    },
+  },
+};
+
+const SYSTEM_PROMPT = `You are an extraction system for Egyptian mobile wallet and bank transfer screenshots AND photos of feature phone screens (Nokia, etc.) showing Vodafone Cash, Etisalat Cash, Orange Cash, or bank SMS confirmations.
+
+Images may be:
+- Clean screenshots from a smartphone app
+- Real photos of a physical phone screen (with glare, blur, fingers holding the phone, dark backgrounds with bright text)
+- Arabic text with Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) that MUST be converted to English (0123456789)
+
+Critical rules for digits:
+- Arabic-Indic ٠١٢٣٤٥٦٧٨٩ MUST be converted to English 0123456789 in ALL numeric fields.
+- ٥٠٠٠ = 5000, ٠١٠١٣٨٨٨٣٦٨ = 01013888368
+
+Critical rules for the amount:
+- The primary transfer amount is near "تم تحويل", "تحويل", "مبلغ", "sent", "transferred", followed by "جنيه" / "EGP".
+- DO NOT select a service fee as the amount. Service fees are near "مصاريف الخدمة", "رسوم", "fee". Put these in serviceFee.
+- DO NOT select the balance (near "رصيد") as the amount.
+
+Critical rules for phone numbers:
+- Extract every phone-looking number visible. Look near "لرقم", "رقم", "VF-Cash", "محفظة".
+- Normalize to 11 digits starting with 0: ٠١٠١٣٨٨٨٣٦٨ → 01013888368, +201013888368 → 01013888368.
+
+Call the record_transfer_extraction tool exactly once with all extracted fields. Use null for what you cannot determine. Never invent values.`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }),
+        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -69,105 +113,70 @@ Deno.serve(async (req) => {
       base64Data = uint8ArrayToBase64(bytes);
     }
 
-    // Call Anthropic Claude Vision
-    const anthropicBody = {
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: `You are an extraction system for Egyptian mobile wallet and bank transfer screenshots AND photos of feature phone screens (Nokia, etc.) showing Vodafone Cash, Etisalat Cash, Orange Cash, or bank SMS confirmations.
-
-Images may be:
-- Clean screenshots from a smartphone app
-- Real photos of a physical phone screen (with glare, blur, fingers holding the phone, dark backgrounds with bright text)
-- Arabic text with Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) that MUST be converted to English (0123456789)
-
-Critical rules for digits:
-- Arabic-Indic ٠١٢٣٤٥٦٧٨٩ MUST be converted to English 0123456789 in ALL numeric fields.
-- ٥٠٠٠ = 5000, ٠١٠١٣٨٨٨٣٦٨ = 01013888368
-
-Critical rules for the amount:
-- The primary transfer amount is near "تم تحويل", "تحويل", "مبلغ", "sent", "transferred", followed by "جنيه" / "EGP".
-- DO NOT select a service fee as the amount. Service fees are near "مصاريف الخدمة", "رسوم", "fee". Put these in serviceFee.
-- DO NOT select the balance (near "رصيد") as the amount.
-- Example: "تم تحويل ٥٠٠٠ جنيه لرقم ٠١٠١٣٨٨٨٣٦٨ مصاريف الخدمة ٠" → amount is "5000", serviceFee is "0".
-
-Critical rules for phone numbers:
-- Extract every phone-looking number visible. Look near "لرقم", "رقم", "VF-Cash", "محفظة".
-- Normalize to 11 digits starting with 0: ٠١٠١٣٨٨٨٣٦٨ → 01013888368, +201013888368 → 01013888368.
-
-Call the record_transfer_extraction tool exactly once with all extracted fields. Use null for what you cannot determine. Never invent values.`,
-      tools: [{
-        name: "record_transfer_extraction",
-        description: "Record fields extracted from a transfer screenshot.",
-        input_schema: {
-          type: "object",
-          properties: {
-            rawText: { type: "string", description: "Full visible text from the image" },
-            phoneNumbers: { type: "array", items: { type: "string" }, description: "All phone numbers as they appear (may include Arabic digits)" },
-            normalizedPhoneNumbers: { type: "array", items: { type: "string" }, description: "11-digit Egyptian format starting with 0" },
-            amount: { type: ["string", "null"], description: "Primary transfer amount as string" },
-            amountNumeric: { type: ["number", "null"], description: "Primary transfer amount as number" },
-            currency: { type: ["string", "null"] },
-            serviceFee: { type: ["string", "null"] },
-            cleanedVisibleMessage: { type: ["string", "null"], description: "Readable cleaned message text with English digits" },
-            transferSummaryText: { type: ["string", "null"], description: "One-line English summary" },
-            confidence: { type: "number", description: "0-100" },
-          },
-          required: ["rawText", "phoneNumbers", "normalizedPhoneNumbers", "amount", "amountNumeric", "currency", "serviceFee", "cleanedVisibleMessage", "transferSummaryText", "confidence"],
-        },
-      }],
-      tool_choice: { type: "tool", name: "record_transfer_extraction" },
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
-          { type: "text", text: "Extract all transfer details from this image by calling the record_transfer_extraction tool." },
-        ],
-      }],
-    };
-
-    const anthropicResponse = await fetch(ANTHROPIC_API_URL, {
+    // Call Lovable AI Gateway (Gemini with vision support)
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(anthropicBody),
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:${mediaType};base64,${base64Data}` },
+              },
+              {
+                type: "text",
+                text: "Extract all transfer details from this image by calling the record_transfer_extraction tool.",
+              },
+            ],
+          },
+        ],
+        tools: [EXTRACTION_TOOL],
+        tool_choice: { type: "function", function: { name: "record_transfer_extraction" } },
+      }),
     });
 
-    const rawBody = await anthropicResponse.text();
-
-    if (!anthropicResponse.ok) {
-      console.error("Anthropic API error:", rawBody.slice(0, 500));
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("AI Gateway error:", aiResponse.status, errText.slice(0, 500));
       if (screenshotId) {
         await supabase.from("transfer_screenshots").update({
           extraction_status: "error",
-          extraction_error: `Anthropic API error: ${anthropicResponse.status}`,
+          extraction_error: `AI Gateway error: ${aiResponse.status}`,
         }).eq("id", screenshotId);
       }
       return new Response(
-        JSON.stringify({ error: `Anthropic API error: ${anthropicResponse.status}` }),
+        JSON.stringify({ error: `AI Gateway error: ${aiResponse.status}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let data;
-    try {
-      data = JSON.parse(rawBody.trim().replace(/^```json\s*/i, "").replace(/```$/i, ""));
-    } catch {
-      return new Response(
-        JSON.stringify({ error: `Non-JSON response: ${rawBody.slice(0, 200)}` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const data = await aiResponse.json();
+
+    // Extract tool call result
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    let extraction: any;
+
+    if (toolCall?.function?.arguments) {
+      try {
+        extraction = typeof toolCall.function.arguments === "string"
+          ? JSON.parse(toolCall.function.arguments)
+          : toolCall.function.arguments;
+      } catch {
+        extraction = null;
+      }
     }
 
-    // Extract tool_use block
-    const toolUse = data.content?.find((b: any) => b.type === "tool_use");
-    let extraction = toolUse?.input;
-
-    // Fallback: try to extract from text
+    // Fallback
     if (!extraction) {
-      const textContent = data.content?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n") || "";
+      const textContent = data.choices?.[0]?.message?.content || "";
       extraction = {
         rawText: textContent,
         phoneNumbers: [],
@@ -188,7 +197,7 @@ Call the record_transfer_extraction tool exactly once with all extracted fields.
 
       const updateData: any = {
         extraction_status: "extracted",
-        extraction_provider: "claude-vision",
+        extraction_provider: "lovable-ai-gemini",
         raw_ocr_text: extraction.rawText,
         cleaned_visible_message: extraction.cleanedVisibleMessage,
         transfer_summary_text: extraction.transferSummaryText,
