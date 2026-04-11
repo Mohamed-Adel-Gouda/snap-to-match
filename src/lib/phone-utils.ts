@@ -72,8 +72,14 @@ export function extractTransferAmount(text: string): { value: number; raw: strin
   for (const m of cleaned.matchAll(/(\d{1,7}(?:[.,]\d{1,2})?)/g)) {
     const value = parseFloat(m[1].replace(',', '.'));
     if (isNaN(value) || value <= 0 || value > 10000000) continue;
-    const ctxStart = Math.max(0, m.index! - 50);
-    const ctxEnd = Math.min(cleaned.length, m.index! + m[1].length + 50);
+    // Skip numbers that look like phone numbers (10+ consecutive digits around this match)
+    const surroundStart = Math.max(0, m.index! - 2);
+    const surroundEnd = Math.min(cleaned.length, m.index! + m[1].length + 2);
+    const surrounding = cleaned.slice(surroundStart, surroundEnd);
+    if (/\d{10,}/.test(surrounding)) continue;
+
+    const ctxStart = Math.max(0, m.index! - 80);
+    const ctxEnd = Math.min(cleaned.length, m.index! + m[1].length + 80);
     const context = cleaned.slice(ctxStart, ctxEnd).toLowerCase();
     let score = 0;
     if (currencyMarkers.some(c => context.includes(c))) score += 50;
