@@ -19,12 +19,31 @@ export default function UploadPage() {
     setItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...update } : it)));
   };
 
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 8192;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    return btoa(binary);
+  };
+
   const processFile = async (file: File, idx: number) => {
     try {
       updateItem(idx, { status: "uploading", progress: "Uploading image…" });
 
+      // Upload to storage first
+      const storagePath = `uploads/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("transfer-screenshots")
+        .upload(storagePath, file);
+      if (uploadError) throw uploadError;
+
+      // Generate fingerprint from a small sample (not the whole file)
       const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const base64 = arrayBufferToBase64(arrayBuffer);
       const fingerprint = generateImageFingerprint(base64);
 
       // Check duplicates
@@ -32,13 +51,6 @@ export default function UploadPage() {
         .from("transfer_screenshots")
         .select("id, transaction_code")
         .eq("image_fingerprint", fingerprint);
-
-      // Upload to storage
-      const storagePath = `uploads/${Date.now()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("transfer-screenshots")
-        .upload(storagePath, file);
-      if (uploadError) throw uploadError;
 
       // Generate transaction code
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -76,10 +88,10 @@ export default function UploadPage() {
         }
       }
 
-      // Call extraction
+      // Call extraction — send storage path instead of base64 for large files
       updateItem(idx, { status: "extracting", progress: "Extracting with Claude Vision…" });
       const { data: extractionResult, error: fnError } = await supabase.functions.invoke("extract-transfer", {
-        body: { imageBase64: base64, mediaType: file.type || "image/jpeg", screenshotId: record.id },
+        body: { storagePath, mediaType: file.type || "image/jpeg", screenshotId: record.id },
       });
 
       if (fnError) throw fnError;
