@@ -7,6 +7,16 @@ const corsHeaders = {
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -21,13 +31,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { imageBase64, mediaType, screenshotId } = await req.json();
+    const { storagePath, imageBase64, mediaType, screenshotId } = await req.json();
 
-    if (!imageBase64 || !mediaType) {
+    if (!mediaType || (!storagePath && !imageBase64)) {
       return new Response(
-        JSON.stringify({ error: "imageBase64 and mediaType are required" }),
+        JSON.stringify({ error: "storagePath (or imageBase64) and mediaType are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get base64 either from request or by downloading from storage
+    let base64Data = imageBase64;
+    if (!base64Data && storagePath) {
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from("transfer-screenshots")
+        .download(storagePath);
+
+      if (downloadError || !fileData) {
+        const errMsg = downloadError?.message || "Failed to download image from storage";
+        if (screenshotId) {
+          await supabase.from("transfer_screenshots").update({
+            extraction_status: "error",
+            extraction_error: errMsg,
+          }).eq("id", screenshotId);
+        }
+        return new Response(
+          JSON.stringify({ error: errMsg }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const bytes = new Uint8Array(await fileData.arrayBuffer());
+      base64Data = uint8ArrayToBase64(bytes);
     }
 
     // Call Anthropic Claude Vision
@@ -80,7 +119,7 @@ Call the record_transfer_extraction tool exactly once with all extracted fields.
       messages: [{
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } },
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
           { type: "text", text: "Extract all transfer details from this image by calling the record_transfer_extraction tool." },
         ],
       }],
@@ -100,11 +139,7 @@ Call the record_transfer_extraction tool exactly once with all extracted fields.
 
     if (!anthropicResponse.ok) {
       console.error("Anthropic API error:", rawBody.slice(0, 500));
-      // Update screenshot with error if we have an ID
       if (screenshotId) {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseKey);
         await supabase.from("transfer_screenshots").update({
           extraction_status: "error",
           extraction_error: `Anthropic API error: ${anthropicResponse.status}`,
@@ -147,12 +182,8 @@ Call the record_transfer_extraction tool exactly once with all extracted fields.
       };
     }
 
-    // Update the screenshot record in DB if screenshotId provided
+    // Update the screenshot record in DB
     if (screenshotId) {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       const primaryPhone = extraction.normalizedPhoneNumbers?.[0] || null;
 
       const updateData: any = {
