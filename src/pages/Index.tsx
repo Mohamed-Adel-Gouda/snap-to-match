@@ -40,7 +40,8 @@ function MetricSkeleton() {
 
 export default function Index() {
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
-  const [customDate, setCustomDate] = useState<Date | undefined>();
+  const [dateFrom, setDateFrom] = useState<Date | undefined>();
+  const [dateTo, setDateTo] = useState<Date | undefined>();
 
   const getDateRange = (): { from?: string; to?: string } => {
     const now = new Date();
@@ -51,16 +52,19 @@ export default function Index() {
         return { from: startOfWeek(now, { weekStartsOn: 6 }).toISOString(), to: endOfDay(now).toISOString() };
       case "month":
         return { from: startOfMonth(now).toISOString(), to: endOfDay(now).toISOString() };
-      case "custom":
-        if (customDate) return { from: startOfDay(customDate).toISOString(), to: endOfDay(customDate).toISOString() };
-        return {};
+      case "custom": {
+        const result: { from?: string; to?: string } = {};
+        if (dateFrom) result.from = startOfDay(dateFrom).toISOString();
+        if (dateTo) result.to = endOfDay(dateTo).toISOString();
+        return result;
+      }
       default:
         return {};
     }
   };
 
   const { data: screenshots, isLoading: loadingScreenshots } = useQuery({
-    queryKey: ["dashboard-stats", datePreset, customDate?.toISOString()],
+    queryKey: ["dashboard-stats", datePreset, dateFrom?.toISOString(), dateTo?.toISOString()],
     queryFn: async () => {
       let query = supabase
         .from("transfer_screenshots")
@@ -111,22 +115,35 @@ export default function Index() {
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="week">This week</SelectItem>
               <SelectItem value="month">This month</SelectItem>
-              <SelectItem value="custom">Pick date</SelectItem>
-            </SelectContent>
-          </Select>
-          {datePreset === "custom" && (
+            <SelectItem value="custom">Custom range</SelectItem>
+          </SelectContent>
+        </Select>
+        {datePreset === "custom" && (
+          <>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !customDate && "text-muted-foreground")}>
+                <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !dateFrom && "text-muted-foreground")}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {customDate ? format(customDate, "PP") : "Pick date"}
+                  {dateFrom ? format(dateFrom, "PP") : "From"}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={customDate} onSelect={setCustomDate} initialFocus className="p-3 pointer-events-auto" />
+                <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
               </PopoverContent>
             </Popover>
-          )}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !dateTo && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateTo ? format(dateTo, "PP") : "To"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+          </>
+        )}
         </div>
       </div>
 
