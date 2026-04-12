@@ -1,58 +1,33 @@
 
 
-# What's Missing for Production — TransferMatch
+# Add Auto-Approve Toggle to Settings
 
-After reviewing all pages, auth, edge functions, database schema, and RLS policies, here are the top items ranked by criticality:
+## What
 
----
+Add a Switch toggle to the Settings page that controls whether high-confidence auto-matched transactions are automatically approved (status set to "approved") or left as "pending" for manual review.
 
-## 1. Password Reset Flow (Critical — Auth Gap)
+## How
 
-The login page has no "Forgot Password" link. If a user forgets their password, they're locked out with no recovery path.
+### 1. Create `app_settings` table (migration)
+- Single-row settings table: `id` (uuid, PK), `key` (text, unique), `value` (jsonb), `updated_at` (timestamptz)
+- Seed with `auto_approve_enabled = false`
+- RLS: authenticated can SELECT; only admins can UPDATE
 
-**Fix:** Add a "Forgot Password" button on the Login page that calls `supabase.auth.resetPasswordForEmail()`, and create a `/reset-password` page that handles the recovery token and lets the user set a new password.
+### 2. Update Settings page (`SettingsPage.tsx`)
+- Fetch the `auto_approve_enabled` setting from the `app_settings` table
+- Add a Switch component with label "Auto-Approve" and description explaining that transactions with 80%+ confidence will be automatically approved
+- On toggle, update the setting in the database and show a toast confirmation
 
----
+### 3. Update edge function (`extract-transfer/index.ts`)
+- After auto-matching, check the `auto_approve_enabled` setting from `app_settings`
+- If enabled and `match_confidence >= 80`, set `accounting_status = 'approved'` and `approved_amount = extracted_amount`
+- If disabled, leave status as `pending` (current behavior)
 
-## 2. Settings Page is Non-Functional (High)
+## Files
 
-The Settings page is purely cosmetic — the confidence threshold slider doesn't persist anywhere (it's local `useState`), and it says "Claude Vision" as the extraction engine when you're actually using Gemini Flash via Lovable AI Gateway. No settings are saved to the database.
-
-**Fix:** Either persist the threshold to a `settings` table and use it during auto-matching, or remove the Settings page to avoid confusion. Update the engine label to "Gemini 2.5 Flash".
-
----
-
-## 3. Pagination on Processed & Review Pages (High)
-
-All queries fetch every row with no limit. Once you have 1,000+ transactions, you'll hit the Supabase default 1,000-row limit silently, and performance will degrade.
-
-**Fix:** Add cursor-based or offset pagination to the Processed table and Review queue. Show page controls and fetch in batches of 50-100.
-
----
-
-## 4. Date Range Filtering (Medium)
-
-Dashboard volumes and the Processed table have no date filtering. In production, users need to see "this week's volume" or "this month's transactions" — not all-time totals mixed together.
-
-**Fix:** Add a date range picker (today / this week / this month / custom) to the Dashboard and Processed page that filters the queries.
-
----
-
-## 5. Logout Doesn't Clear Query Cache (Medium)
-
-When a user logs out and another logs in, the React Query cache may still hold the previous user's data until queries refetch.
-
-**Fix:** Call `queryClient.clear()` on logout before navigating to `/login`.
-
----
-
-## Technical Summary
-
-| # | Item | Files to Create/Edit | DB Changes |
-|---|------|---------------------|------------|
-| 1 | Password reset | Login.tsx (edit), ResetPassword.tsx (new), App.tsx (add route) | None |
-| 2 | Fix Settings | SettingsPage.tsx (edit or remove) | Optional: `app_settings` table |
-| 3 | Pagination | ProcessedPage.tsx, ReviewPage.tsx | None |
-| 4 | Date filtering | Index.tsx, ProcessedPage.tsx | None |
-| 5 | Logout cache clear | AppSidebar.tsx | None |
+| Action | File |
+|--------|------|
+| Migration | New: `app_settings` table + seed row |
+| Edit | `src/pages/SettingsPage.tsx` — add Switch + fetch/update logic |
+| Edit | `supabase/functions/extract-transfer/index.ts` — read setting, conditionally auto-approve |
 
