@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, CheckCircle, XCircle, Link as LinkIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Link as LinkIcon, UserPlus, Plus, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -16,8 +17,120 @@ interface Props {
   onClose: () => void;
 }
 
+interface PhoneEntry {
+  phone: string;
+  type: string;
+}
+
+function AddPersonInline({
+  prefillPhone,
+  onCreated,
+  onCancel,
+}: {
+  prefillPhone: string;
+  onCreated: (personId: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [phones, setPhones] = useState<PhoneEntry[]>([
+    { phone: prefillPhone, type: "primary_phone" },
+  ]);
+  const [saving, setSaving] = useState(false);
+
+  const addPhone = () => setPhones([...phones, { phone: "", type: "alternate_phone" }]);
+  const removePhone = (idx: number) => setPhones(phones.filter((_, i) => i !== idx));
+  const updatePhone = (idx: number, field: keyof PhoneEntry, value: string) =>
+    setPhones(phones.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
+
+  const handleSave = async () => {
+    if (!name.trim()) { toast.error("Name is required"); return; }
+    setSaving(true);
+    try {
+      const { data: person, error } = await supabase
+        .from("people")
+        .insert({ full_name: name })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const validPhones = phones.filter(p => p.phone.trim());
+      if (validPhones.length > 0) {
+        const { error: idError } = await supabase.from("person_identifiers").insert(
+          validPhones.map((p, idx) => ({
+            person_id: person.id,
+            identifier_type: p.type,
+            raw_value: p.phone,
+            normalized_value: normalizePhone(p.phone),
+            is_primary: idx === 0,
+          }))
+        );
+        if (idError) throw idError;
+      }
+      toast.success("Person created & linked");
+      onCreated(person.id);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border-2 border-accent/30 bg-accent/5 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <UserPlus className="h-4 w-4" /> Add New Person
+        </p>
+        <Button variant="ghost" size="icon" onClick={onCancel} className="h-6 w-6">
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Full Name</Label>
+        <Input value={name} onChange={e => setName(e.target.value)} placeholder="Enter full name" />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">Phone Numbers</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addPhone} className="h-6 text-xs px-2">
+            <Plus className="mr-1 h-3 w-3" />Add
+          </Button>
+        </div>
+        {phones.map((entry, idx) => (
+          <div key={idx} className="flex gap-2 items-start">
+            <Input
+              value={entry.phone}
+              onChange={e => updatePhone(idx, "phone", e.target.value)}
+              placeholder="01012345678"
+              className="flex-1 font-mono text-sm"
+            />
+            <Select value={entry.type} onValueChange={v => updatePhone(idx, "type", v)}>
+              <SelectTrigger className="w-[120px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="primary_phone">Primary</SelectItem>
+                <SelectItem value="alternate_phone">Alternate</SelectItem>
+                <SelectItem value="wallet">Wallet</SelectItem>
+                <SelectItem value="bank_account">Bank Acct</SelectItem>
+              </SelectContent>
+            </Select>
+            {phones.length > 1 && (
+              <Button type="button" variant="ghost" size="icon" onClick={() => removePhone(idx)} className="h-8 w-8">
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+      <Button onClick={handleSave} disabled={!name.trim() || saving} className="w-full">
+        {saving ? "Saving…" : "Create & Link Person"}
+      </Button>
+    </div>
+  );
+}
+
 export function TransactionDetailModal({ screenshotId, onClose }: Props) {
   const queryClient = useQueryClient();
+  const [showAddPerson, setShowAddPerson] = useState(false);
 
   const { data: screenshot } = useQuery({
     queryKey: ["screenshot", screenshotId],
@@ -96,6 +209,8 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["screenshot", screenshotId] });
       queryClient.invalidateQueries({ queryKey: ["audit-log", screenshotId] });
+      queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["people"] });
       toast.success("Updated");
     },
     onError: (err: any) => toast.error(err.message),
@@ -131,7 +246,6 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
     }
     if (!isNaN(amt)) updates.extracted_amount = amt;
 
-    // Try to match
     if (norm) {
       const { data: matches } = await supabase
         .from("person_identifiers")
@@ -161,11 +275,47 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
     });
   };
 
+  const handlePersonCreated = async (personId: string) => {
+    setShowAddPerson(false);
+    // Find the newly created identifier to link it
+    const phone = screenshot?.extracted_phone_normalized;
+    if (phone) {
+      const { data: idents } = await supabase
+        .from("person_identifiers")
+        .select("id, identifier_type")
+        .eq("person_id", personId)
+        .eq("normalized_value", phone)
+        .limit(1);
+      if (idents && idents.length > 0) {
+        updateMutation.mutate({
+          matched_person_id: personId,
+          matched_identifier_id: idents[0].id,
+          matched_identifier_type: idents[0].identifier_type,
+          match_confidence: 100,
+          match_type: "manual",
+          auto_matched: false,
+        });
+      } else {
+        updateMutation.mutate({
+          matched_person_id: personId,
+          match_confidence: 100,
+          match_type: "manual",
+          auto_matched: false,
+        });
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["possible-matches"] });
+  };
+
   if (!screenshot) return null;
 
   const imageUrl = screenshot.storage_path
     ? supabase.storage.from("transfer-screenshots").getPublicUrl(screenshot.storage_path).data.publicUrl
     : null;
+
+  const isUnmatched = !(screenshot.people as any)?.full_name;
+  const hasPhone = !!screenshot.extracted_phone_normalized;
+  const noMatches = !possibleMatches || possibleMatches.length === 0;
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
@@ -241,7 +391,7 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
             )}
 
             {/* Possible matches */}
-            {possibleMatches && possibleMatches.length > 0 && !(screenshot.people as any)?.full_name && (
+            {possibleMatches && possibleMatches.length > 0 && isUnmatched && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">Possible Matches</p>
                 {possibleMatches.map((m: any) => (
@@ -255,6 +405,25 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
                   </button>
                 ))}
               </div>
+            )}
+
+            {/* Add New Person — shown when unmatched with a phone and no existing matches */}
+            {isUnmatched && hasPhone && noMatches && !showAddPerson && (
+              <Button
+                variant="outline"
+                className="w-full border-dashed border-accent/50 text-accent hover:bg-accent/10"
+                onClick={() => setShowAddPerson(true)}
+              >
+                <UserPlus className="mr-2 h-4 w-4" /> Add as New Person
+              </Button>
+            )}
+
+            {showAddPerson && screenshot.extracted_phone_normalized && (
+              <AddPersonInline
+                prefillPhone={screenshot.extracted_phone_normalized}
+                onCreated={handlePersonCreated}
+                onCancel={() => setShowAddPerson(false)}
+              />
             )}
 
             {/* Finance review */}
