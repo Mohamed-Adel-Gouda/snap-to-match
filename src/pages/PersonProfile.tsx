@@ -2,14 +2,15 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, X } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PersonProfile() {
   const { id } = useParams<{ id: string }>();
   const [selectedScreenshot, setSelectedScreenshot] = useState<any>(null);
 
-  const { data: person } = useQuery({
+  const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
     queryFn: async () => {
       const { data, error } = await supabase.from("people").select("*, person_identifiers(*)").eq("id", id!).single();
@@ -19,7 +20,7 @@ export default function PersonProfile() {
     enabled: !!id,
   });
 
-  const { data: screenshots } = useQuery({
+  const { data: screenshots, isLoading: loadingScreenshots } = useQuery({
     queryKey: ["person-screenshots", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -38,7 +39,27 @@ export default function PersonProfile() {
     return data?.publicUrl || "";
   };
 
-  if (!person) return <div className="p-8 text-muted-foreground">Loading…</div>;
+  if (loadingPerson) {
+    return (
+      <div className="space-y-6 p-4">
+        <Skeleton className="h-4 w-32" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="metric-card"><Skeleton className="h-4 w-20" /><Skeleton className="mt-2 h-8 w-12" /></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!person) return <div className="p-8 text-muted-foreground">Person not found.</div>;
 
   const identifiers = (person.person_identifiers || []) as any[];
   const primaryPhone = identifiers.find((i: any) => i.identifier_type === "primary_phone");
@@ -73,7 +94,7 @@ export default function PersonProfile() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         <div className="metric-card"><p className="text-xs text-muted-foreground">Total Screenshots</p><p className="text-2xl font-bold font-mono mt-1">{totalMatched}</p></div>
         <div className="metric-card"><p className="text-xs text-muted-foreground">Matched</p><p className="text-2xl font-bold font-mono mt-1">{totalMatched}</p></div>
         <div className="metric-card"><p className="text-xs text-muted-foreground">Auto-matched</p><p className="text-2xl font-bold font-mono mt-1">{autoMatched}</p></div>
@@ -98,48 +119,67 @@ export default function PersonProfile() {
                 </div>
               );
             })}
-            {identifiers.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">No identifiers</p>}
+            {identifiers.length === 0 && (
+              <div className="px-6 py-6 text-center">
+                <p className="text-sm text-muted-foreground">No linked accounts yet.</p>
+                <Link to="/people" className="text-xs text-accent hover:underline mt-1 inline-block">Edit this person to add phone numbers</Link>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="lg:col-span-2 table-container overflow-x-auto">
           <div className="border-b px-6 py-4"><h2 className="font-semibold">Linked Screenshots</h2></div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50 text-left">
-                <th className="px-4 py-3 font-medium">Code</th>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Phone</th>
-                <th className="px-4 py-3 font-medium">Match</th>
-                <th className="px-4 py-3 font-medium text-right">Amount</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {screenshots?.map(s => (
-                <tr
-                  key={s.id}
-                  className="hover:bg-muted/30 cursor-pointer transition-colors"
-                  onClick={() => setSelectedScreenshot(s)}
-                >
-                  <td className="px-4 py-3 font-mono text-xs">{s.transaction_code}</td>
-                  <td className="px-4 py-3 text-xs">{new Date(s.created_at!).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{s.extracted_phone_normalized}</td>
-                  <td className="px-4 py-3">
-                    <span className={`status-badge ${s.auto_matched ? 'status-matched' : 'status-pending'}`}>
-                      {s.auto_matched ? "Auto" : "Manual"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono">{s.approved_amount || s.extracted_amount ? Number(s.approved_amount || s.extracted_amount).toLocaleString() : "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className={`status-badge ${s.accounting_status === 'approved' ? 'status-approved' : s.accounting_status === 'rejected' ? 'status-rejected' : 'status-pending'}`}>
-                      {s.accounting_status}
-                    </span>
-                  </td>
-                </tr>
+          {loadingScreenshots ? (
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : screenshots && screenshots.length > 0 ? (
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="px-4 py-3 font-medium">Code</th>
+                  <th className="px-4 py-3 font-medium">Date</th>
+                  <th className="px-4 py-3 font-medium hidden sm:table-cell">Phone</th>
+                  <th className="px-4 py-3 font-medium hidden md:table-cell">Match</th>
+                  <th className="px-4 py-3 font-medium text-right">Amount</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {screenshots.map(s => (
+                  <tr
+                    key={s.id}
+                    className="hover:bg-muted/30 cursor-pointer transition-colors"
+                    onClick={() => setSelectedScreenshot(s)}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs">{s.transaction_code}</td>
+                    <td className="px-4 py-3 text-xs">{new Date(s.created_at!).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 font-mono text-xs hidden sm:table-cell">{s.extracted_phone_normalized}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <span className={`status-badge ${s.auto_matched ? 'status-matched' : 'status-pending'}`}>
+                        {s.auto_matched ? "Auto" : "Manual"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">{s.approved_amount || s.extracted_amount ? Number(s.approved_amount || s.extracted_amount).toLocaleString() : "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`status-badge ${s.accounting_status === 'approved' ? 'status-approved' : s.accounting_status === 'rejected' ? 'status-rejected' : 'status-pending'}`}>
+                        {s.accounting_status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="px-6 py-12 text-center">
+              <Upload className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+              <p className="text-sm text-muted-foreground">No transactions yet.</p>
+              <Link to="/upload" className="text-xs text-accent hover:underline mt-1 inline-block">Upload screenshots to get started</Link>
+            </div>
+          )}
         </div>
       </div>
 
@@ -153,7 +193,6 @@ export default function PersonProfile() {
           </DialogHeader>
           {selectedScreenshot && (
             <div className="space-y-4">
-              {/* Screenshot Image */}
               <div className="rounded-lg border overflow-hidden bg-muted/30">
                 <img
                   src={getImageUrl(selectedScreenshot.storage_path)}
@@ -161,8 +200,6 @@ export default function PersonProfile() {
                   className="w-full h-auto max-h-[50vh] object-contain"
                 />
               </div>
-
-              {/* Details Grid */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground text-xs">Amount</p>
@@ -193,8 +230,6 @@ export default function PersonProfile() {
                   <p className="font-mono font-medium">{selectedScreenshot.match_confidence ?? "—"}%</p>
                 </div>
               </div>
-
-              {/* Cleaned Message */}
               {selectedScreenshot.cleaned_visible_message && (
                 <div>
                   <p className="text-muted-foreground text-xs mb-1">Extracted Message</p>

@@ -10,6 +10,7 @@ interface UploadItem {
   status: "pending" | "uploading" | "extracting" | "done" | "error";
   progress: string;
   error?: string;
+  txCode?: string;
 }
 
 export default function UploadPage() {
@@ -34,25 +35,21 @@ export default function UploadPage() {
     try {
       updateItem(idx, { status: "uploading", progress: "Uploading image…" });
 
-      // Upload to storage first
       const storagePath = `uploads/${Date.now()}-${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from("transfer-screenshots")
         .upload(storagePath, file);
       if (uploadError) throw uploadError;
 
-      // Generate fingerprint from a small sample (not the whole file)
       const arrayBuffer = await file.arrayBuffer();
       const base64 = arrayBufferToBase64(arrayBuffer);
       const fingerprint = generateImageFingerprint(base64);
 
-      // Check duplicates
       const { data: dupes } = await supabase
         .from("transfer_screenshots")
         .select("id, transaction_code")
         .eq("image_fingerprint", fingerprint);
 
-      // Generate transaction code
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const { count } = await supabase
         .from("transfer_screenshots")
@@ -60,7 +57,6 @@ export default function UploadPage() {
         .like("transaction_code", `TX-${today}-%`);
       const txCode = generateTransactionCode(count || 0);
 
-      // Insert record
       const { data: user } = await supabase.auth.getUser();
       const { data: record, error: insertError } = await supabase
         .from("transfer_screenshots")
@@ -77,7 +73,6 @@ export default function UploadPage() {
         .single();
       if (insertError) throw insertError;
 
-      // Insert duplicate records
       if (dupes && dupes.length > 0) {
         for (const dupe of dupes) {
           await supabase.from("screenshot_duplicates").insert({
@@ -88,7 +83,6 @@ export default function UploadPage() {
         }
       }
 
-      // Call extraction — send storage path instead of base64 for large files
       updateItem(idx, { status: "extracting", progress: "Extracting with AI Vision…" });
       const { data: extractionResult, error: fnError } = await supabase.functions.invoke("extract-transfer", {
         body: { storagePath, mediaType: file.type || "image/jpeg", screenshotId: record.id },
@@ -96,10 +90,13 @@ export default function UploadPage() {
 
       if (fnError) throw fnError;
 
-      // Client-side reinforcement: catch any phones/amounts the AI missed
       const reinforced = reinforceExtraction(extractionResult);
+      const summary = reinforced?.transferSummaryText || txCode;
 
-      updateItem(idx, { status: "done", progress: `Done — ${reinforced?.transferSummaryText || txCode}` });
+      updateItem(idx, { status: "done", progress: `Done — ${summary}`, txCode });
+      toast.success(`${txCode} processed successfully`, {
+        description: summary !== txCode ? summary : file.name,
+      });
     } catch (err: any) {
       updateItem(idx, { status: "error", progress: "Failed", error: err.message });
       toast.error(`${file.name}: ${err.message}`);
@@ -139,7 +136,7 @@ export default function UploadPage() {
 
       <div
         {...getRootProps()}
-        className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors cursor-pointer ${
+        className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 sm:p-12 transition-colors cursor-pointer ${
           isDragActive ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
         }`}
       >
@@ -152,7 +149,7 @@ export default function UploadPage() {
       {items.length > 0 && (
         <div className="table-container divide-y">
           {items.map((item, i) => (
-            <div key={i} className="flex items-center gap-4 px-6 py-3">
+            <div key={i} className="flex items-center gap-4 px-4 sm:px-6 py-3">
               <div className="shrink-0">
                 {item.status === "done" ? (
                   <CheckCircle className="h-5 w-5 text-success" />
