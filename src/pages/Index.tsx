@@ -38,8 +38,9 @@ export default function Index() {
 
   const total = screenshots?.length || 0;
   const matched = screenshots?.filter(s => s.matched_person_id).length || 0;
-  const volume = screenshots?.reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
   const matchRate = total > 0 ? Math.round((matched / total) * 100) : 0;
+  const activeVolume = screenshots?.filter(s => s.accounting_status !== 'rejected').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
+  const approvedVolume = screenshots?.filter(s => s.accounting_status === 'approved').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
 
   const recent = (screenshots || [])
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -52,10 +53,11 @@ export default function Index() {
         <p className="text-muted-foreground">Finance operations overview</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Total Screenshots" value={String(total)} icon={LayoutDashboard} />
         <MetricCard label="Matched" value={String(matched)} icon={CheckCircle} />
-        <MetricCard label="Volume (EGP)" value={volume.toLocaleString()} icon={DollarSign} />
+        <MetricCard label="Active Volume (EGP)" value={activeVolume.toLocaleString()} icon={DollarSign} sub="Excludes rejected" />
+        <MetricCard label="Approved Volume (EGP)" value={approvedVolume.toLocaleString()} icon={CheckCircle} sub="Approved only" />
         <MetricCard label="Match Rate" value={`${matchRate}%`} icon={Target} />
       </div>
 
