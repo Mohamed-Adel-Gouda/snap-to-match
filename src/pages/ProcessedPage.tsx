@@ -216,6 +216,9 @@ export default function ProcessedPage() {
                       {s.accounting_status}
                     </span>
                   </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-xs text-muted-foreground">
+                    {s.created_at ? format(new Date(s.created_at), "MMM d, yyyy") : "—"}
+                  </td>
                 </tr>
               ))
             )}
