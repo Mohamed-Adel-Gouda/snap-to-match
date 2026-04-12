@@ -382,6 +382,18 @@ Deno.serve(async (req) => {
           updateData.match_confidence = matches[0].identifier_type === "primary_phone" ? 100 : matches[0].identifier_type === "alternate_phone" ? 95 : 90;
           updateData.match_type = "exact";
           updateData.auto_matched = true;
+
+          // Auto-approve if setting is enabled and confidence >= 80
+          const { data: autoApproveSetting } = await supabase
+            .from("app_settings")
+            .select("value")
+            .eq("key", "auto_approve_enabled")
+            .single();
+
+          if (autoApproveSetting?.value === true && updateData.match_confidence >= 80) {
+            updateData.accounting_status = "approved";
+            updateData.approved_amount = extraction.amountNumeric;
+          }
         }
       }
 
