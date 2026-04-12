@@ -53,7 +53,7 @@ export default function Index() {
         <p className="text-muted-foreground">Finance operations overview</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Total Screenshots" value={String(total)} icon={LayoutDashboard} />
         <MetricCard label="Matched" value={String(matched)} icon={CheckCircle} />
         <MetricCard label="Active Volume (EGP)" value={activeVolume.toLocaleString()} icon={DollarSign} sub="Excludes rejected" />
