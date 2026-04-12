@@ -211,7 +211,7 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["audit-log", screenshotId] });
       queryClient.invalidateQueries({ queryKey: ["review-queue"] });
       queryClient.invalidateQueries({ queryKey: ["people"] });
-      toast.success("Updated");
+      toast.success("Transaction updated successfully");
     },
     onError: (err: any) => toast.error(err.message),
   });
@@ -319,7 +319,7 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="font-mono text-sm">{screenshot.transaction_code}</span>
@@ -328,10 +328,10 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
           {/* Left: Image */}
           <div>
-            {imageUrl && <img src={imageUrl} alt={screenshot.filename} className="rounded-lg border w-full" />}
+            {imageUrl && <img src={imageUrl} alt={screenshot.filename} className="rounded-lg border w-full max-h-[40vh] lg:max-h-none object-contain" />}
           </div>
 
           {/* Right: Fields */}
@@ -474,11 +474,11 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Phone</Label>
-                  <Input value={manualPhone} onChange={e => setManualPhone(e.target.value)} className="font-mono" placeholder="01012345678" />
+                  <Input value={manualPhone} onChange={e => setManualPhone(e.target.value.replace(/[^\d+]/g, ''))} className="font-mono" placeholder="01012345678" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Amount (EGP)</Label>
-                  <Input value={manualAmount} onChange={e => setManualAmount(e.target.value)} className="font-mono" placeholder="0.00" />
+                  <Input value={manualAmount} onChange={e => setManualAmount(e.target.value.replace(/[^\d.]/g, ''))} className="font-mono" placeholder="0.00" />
                 </div>
               </div>
               <Button onClick={handleManualSave} variant="outline" className="w-full" disabled={!manualPhone && !manualAmount}>

@@ -5,13 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "react-router-dom";
 import { TransactionDetailModal } from "@/components/TransactionDetailModal";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ProcessedPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { data: screenshots, refetch } = useQuery({
+  const { data: screenshots, isLoading, refetch } = useQuery({
     queryKey: ["processed", statusFilter],
     queryFn: async () => {
       let query = supabase
@@ -46,7 +47,7 @@ export default function ProcessedPage() {
         <p className="text-muted-foreground">{filtered.length} records</p>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <Input placeholder="Search filename, code, phone, person…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44">
@@ -63,52 +64,65 @@ export default function ProcessedPage() {
       </div>
 
       <div className="table-container overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b bg-muted/50 text-left">
               <th className="px-4 py-3 font-medium">Code</th>
-              <th className="px-4 py-3 font-medium">Filename</th>
+              <th className="px-4 py-3 font-medium hidden md:table-cell">Filename</th>
               <th className="px-4 py-3 font-medium">Person</th>
               <th className="px-4 py-3 font-medium">Phone</th>
               <th className="px-4 py-3 font-medium text-right">Amount</th>
-              <th className="px-4 py-3 font-medium">Confidence</th>
+              <th className="px-4 py-3 font-medium hidden lg:table-cell">Confidence</th>
               <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map(s => (
-              <tr key={s.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(s.id)}>
-                <td className="px-4 py-3 font-mono text-xs">{s.transaction_code}</td>
-                <td className="px-4 py-3 max-w-[200px] truncate">{s.filename}</td>
-                <td className="px-4 py-3">
-                  {(s.people as any)?.full_name ? (
-                    <Link to={`/people/${(s.people as any).id}`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
-                      {(s.people as any).full_name}
-                    </Link>
-                  ) : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="px-4 py-3 font-mono text-xs">{s.extracted_phone_normalized || "—"}</td>
-                <td className="px-4 py-3 text-right font-mono">{s.extracted_amount ? `${Number(s.extracted_amount).toLocaleString()}` : "—"}</td>
-                <td className="px-4 py-3">
-                  {s.match_confidence != null && (
-                    <span className={`status-badge ${s.match_confidence >= 90 ? 'status-matched' : s.match_confidence >= 70 ? 'status-pending' : 'status-error'}`}>
-                      {s.match_confidence}%
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`status-badge ${
-                    s.accounting_status === 'approved' ? 'status-approved' :
-                    s.accounting_status === 'rejected' ? 'status-rejected' :
-                    s.accounting_status === 'duplicate_review' ? 'status-duplicate' : 'status-pending'
-                  }`}>
-                    {s.accounting_status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-32" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                  <td className="px-4 py-3 hidden lg:table-cell"><Skeleton className="h-5 w-12" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-5 w-16" /></td>
+                </tr>
+              ))
+            ) : filtered.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">No records found</td></tr>
+            ) : (
+              filtered.map(s => (
+                <tr key={s.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(s.id)}>
+                  <td className="px-4 py-3 font-mono text-xs">{s.transaction_code}</td>
+                  <td className="px-4 py-3 max-w-[200px] truncate hidden md:table-cell">{s.filename}</td>
+                  <td className="px-4 py-3">
+                    {(s.people as any)?.full_name ? (
+                      <Link to={`/people/${(s.people as any).id}`} className="text-accent hover:underline" onClick={e => e.stopPropagation()}>
+                        {(s.people as any).full_name}
+                      </Link>
+                    ) : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">{s.extracted_phone_normalized || "—"}</td>
+                  <td className="px-4 py-3 text-right font-mono">{s.extracted_amount ? `${Number(s.extracted_amount).toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    {s.match_confidence != null && (
+                      <span className={`status-badge ${s.match_confidence >= 90 ? 'status-matched' : s.match_confidence >= 70 ? 'status-pending' : 'status-error'}`}>
+                        {s.match_confidence}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`status-badge ${
+                      s.accounting_status === 'approved' ? 'status-approved' :
+                      s.accounting_status === 'rejected' ? 'status-rejected' :
+                      s.accounting_status === 'duplicate_review' ? 'status-duplicate' : 'status-pending'
+                    }`}>
+                      {s.accounting_status}
+                    </span>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
