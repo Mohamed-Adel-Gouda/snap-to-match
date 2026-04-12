@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function PersonProfile() {
   const { id } = useParams<{ id: string }>();
+  const [selectedScreenshot, setSelectedScreenshot] = useState<any>(null);
 
   const { data: person } = useQuery({
     queryKey: ["person", id],
@@ -29,6 +32,11 @@ export default function PersonProfile() {
     },
     enabled: !!id,
   });
+
+  const getImageUrl = (storagePath: string) => {
+    const { data } = supabase.storage.from("transfer-screenshots").getPublicUrl(storagePath);
+    return data?.publicUrl || "";
+  };
 
   if (!person) return <div className="p-8 text-muted-foreground">Loading…</div>;
 
@@ -107,9 +115,13 @@ export default function PersonProfile() {
             </thead>
             <tbody className="divide-y">
               {screenshots?.map(s => (
-                <tr key={s.id} className="hover:bg-muted/30">
+                <tr
+                  key={s.id}
+                  className="hover:bg-muted/30 cursor-pointer transition-colors"
+                  onClick={() => setSelectedScreenshot(s)}
+                >
                   <td className="px-4 py-3 font-mono text-xs">{s.transaction_code}</td>
-                  <td className="px-4 py-3 text-xs">{new Date(s.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-xs">{new Date(s.created_at!).toLocaleDateString()}</td>
                   <td className="px-4 py-3 font-mono text-xs">{s.extracted_phone_normalized}</td>
                   <td className="px-4 py-3">
                     <span className={`status-badge ${s.auto_matched ? 'status-matched' : 'status-pending'}`}>
@@ -128,6 +140,71 @@ export default function PersonProfile() {
           </table>
         </div>
       </div>
+
+      {/* Screenshot Viewer Modal */}
+      <Dialog open={!!selectedScreenshot} onOpenChange={open => !open && setSelectedScreenshot(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm">
+              Transaction: {selectedScreenshot?.transaction_code}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedScreenshot && (
+            <div className="space-y-4">
+              {/* Screenshot Image */}
+              <div className="rounded-lg border overflow-hidden bg-muted/30">
+                <img
+                  src={getImageUrl(selectedScreenshot.storage_path)}
+                  alt="Transfer screenshot"
+                  className="w-full h-auto max-h-[50vh] object-contain"
+                />
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Amount</p>
+                  <p className="font-mono font-medium">
+                    {Number(selectedScreenshot.approved_amount || selectedScreenshot.extracted_amount || 0).toLocaleString()} {selectedScreenshot.currency || "EGP"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Service Fee</p>
+                  <p className="font-mono font-medium">{selectedScreenshot.service_fee ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Phone</p>
+                  <p className="font-mono font-medium">{selectedScreenshot.extracted_phone_normalized || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Status</p>
+                  <span className={`status-badge ${selectedScreenshot.accounting_status === 'approved' ? 'status-approved' : selectedScreenshot.accounting_status === 'rejected' ? 'status-rejected' : 'status-pending'}`}>
+                    {selectedScreenshot.accounting_status}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Match Type</p>
+                  <p className="font-medium">{selectedScreenshot.auto_matched ? "Auto" : "Manual"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Confidence</p>
+                  <p className="font-mono font-medium">{selectedScreenshot.match_confidence ?? "—"}%</p>
+                </div>
+              </div>
+
+              {/* Cleaned Message */}
+              {selectedScreenshot.cleaned_visible_message && (
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Extracted Message</p>
+                  <p className="text-sm bg-muted/50 rounded-md p-3 font-mono leading-relaxed" dir="auto">
+                    {selectedScreenshot.cleaned_visible_message}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
