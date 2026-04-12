@@ -45,7 +45,8 @@ export default function PersonProfile() {
   const totalMatched = screenshots?.length || 0;
   const autoMatched = screenshots?.filter(s => s.auto_matched).length || 0;
   const manualMatched = totalMatched - autoMatched;
-  const totalVolume = screenshots?.reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
+  const activeVolume = screenshots?.filter(s => s.accounting_status !== 'rejected').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
+  const approvedVolume = screenshots?.filter(s => s.accounting_status === 'approved').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
 
   const iconForType = (type: string) => {
     if (type.includes("phone")) return Phone;
@@ -77,7 +78,8 @@ export default function PersonProfile() {
         <div className="metric-card"><p className="text-xs text-muted-foreground">Matched</p><p className="text-2xl font-bold font-mono mt-1">{totalMatched}</p></div>
         <div className="metric-card"><p className="text-xs text-muted-foreground">Auto-matched</p><p className="text-2xl font-bold font-mono mt-1">{autoMatched}</p></div>
         <div className="metric-card"><p className="text-xs text-muted-foreground">Manual</p><p className="text-2xl font-bold font-mono mt-1">{manualMatched}</p></div>
-        <div className="metric-card"><p className="text-xs text-muted-foreground">Volume (EGP)</p><p className="text-2xl font-bold font-mono mt-1">{totalVolume.toLocaleString()}</p></div>
+        <div className="metric-card"><p className="text-xs text-muted-foreground">Active Volume (EGP)</p><p className="text-2xl font-bold font-mono mt-1">{activeVolume.toLocaleString()}</p><p className="text-[10px] text-muted-foreground mt-0.5">Excludes rejected</p></div>
+        <div className="metric-card"><p className="text-xs text-muted-foreground">Approved Volume (EGP)</p><p className="text-2xl font-bold font-mono mt-1">{approvedVolume.toLocaleString()}</p><p className="text-[10px] text-muted-foreground mt-0.5">Approved only</p></div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
