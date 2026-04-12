@@ -1,31 +1,47 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertTriangle, Clock, Inbox } from "lucide-react";
+import { AlertTriangle, Clock, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { TransactionDetailModal } from "@/components/TransactionDetailModal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+
+const PAGE_SIZE = 30;
 
 export default function ReviewPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
-  const { data: items, isLoading, refetch } = useQuery({
-    queryKey: ["review-queue"],
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["review-queue", page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const countQuery = supabase
+        .from("transfer_screenshots")
+        .select("id", { count: "exact", head: true })
+        .or("accounting_status.in.(pending,duplicate_review),extraction_status.eq.error");
+
+      const query = supabase
         .from("transfer_screenshots")
         .select("*, people!matched_person_id(id, full_name)")
         .or("accounting_status.in.(pending,duplicate_review),extraction_status.eq.error")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      const [{ data: rows, error }, { count }] = await Promise.all([query, countQuery]);
       if (error) throw error;
-      return data || [];
+      return { rows: rows || [], total: count || 0 };
     },
   });
+
+  const items = data?.rows || [];
+  const totalCount = data?.total || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Review Queue</h1>
-        <p className="text-muted-foreground">{items?.length || 0} items awaiting review</p>
+        <p className="text-muted-foreground">{totalCount} items awaiting review</p>
       </div>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -43,14 +59,14 @@ export default function ReviewPage() {
               </div>
             </div>
           ))
-        ) : items?.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="col-span-full text-center py-12">
             <Inbox className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
             <p className="text-muted-foreground">No items in the review queue 🎉</p>
             <p className="text-xs text-muted-foreground mt-1">All caught up!</p>
           </div>
         ) : (
-          items?.map(item => (
+          items.map(item => (
             <div
               key={item.id}
               className="metric-card cursor-pointer hover:ring-2 hover:ring-accent/50 transition-all"
@@ -89,6 +105,20 @@ export default function ReviewPage() {
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+              Next <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {selectedId && (
         <TransactionDetailModal

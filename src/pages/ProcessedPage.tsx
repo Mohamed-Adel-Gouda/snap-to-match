@@ -6,30 +6,81 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link } from "react-router-dom";
 import { TransactionDetailModal } from "@/components/TransactionDetailModal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { format, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 50;
+
+type DatePreset = "all" | "today" | "week" | "month" | "custom";
 
 export default function ProcessedPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customDate, setCustomDate] = useState<Date | undefined>();
 
-  const { data: screenshots, isLoading, refetch } = useQuery({
-    queryKey: ["processed", statusFilter],
+  const getDateRange = (): { from?: string; to?: string } => {
+    const now = new Date();
+    switch (datePreset) {
+      case "today":
+        return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+      case "week":
+        return { from: startOfWeek(now, { weekStartsOn: 6 }).toISOString(), to: endOfDay(now).toISOString() };
+      case "month":
+        return { from: startOfMonth(now).toISOString(), to: endOfDay(now).toISOString() };
+      case "custom":
+        if (customDate) return { from: startOfDay(customDate).toISOString(), to: endOfDay(customDate).toISOString() };
+        return {};
+      default:
+        return {};
+    }
+  };
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["processed", statusFilter, page, datePreset, customDate?.toISOString()],
     queryFn: async () => {
+      let countQuery = supabase
+        .from("transfer_screenshots")
+        .select("id", { count: "exact", head: true });
+
       let query = supabase
         .from("transfer_screenshots")
         .select("*, people!matched_person_id(id, full_name)")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
       if (statusFilter !== "all") {
         query = query.eq("accounting_status", statusFilter);
+        countQuery = countQuery.eq("accounting_status", statusFilter);
       }
-      const { data, error } = await query;
+
+      const { from, to } = getDateRange();
+      if (from) {
+        query = query.gte("created_at", from);
+        countQuery = countQuery.gte("created_at", from);
+      }
+      if (to) {
+        query = query.lte("created_at", to);
+        countQuery = countQuery.lte("created_at", to);
+      }
+
+      const [{ data: rows, error }, { count }] = await Promise.all([query, countQuery]);
       if (error) throw error;
-      return data || [];
+      return { rows: rows || [], total: count || 0 };
     },
   });
 
-  const filtered = (screenshots || []).filter(s => {
+  const screenshots = data?.rows || [];
+  const totalCount = data?.total || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const filtered = screenshots.filter(s => {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -44,12 +95,12 @@ export default function ProcessedPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Processed Screenshots</h1>
-        <p className="text-muted-foreground">{filtered.length} records</p>
+        <p className="text-muted-foreground">{totalCount} records total</p>
       </div>
 
       <div className="flex gap-3 flex-wrap">
         <Input placeholder="Search filename, code, phone, person…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
           <SelectTrigger className="w-44">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
@@ -61,6 +112,31 @@ export default function ProcessedPage() {
             <SelectItem value="duplicate_review">Duplicate Review</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={datePreset} onValueChange={v => { setDatePreset(v as DatePreset); setPage(0); }}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="All time" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="today">Today</SelectItem>
+            <SelectItem value="week">This week</SelectItem>
+            <SelectItem value="month">This month</SelectItem>
+            <SelectItem value="custom">Pick date</SelectItem>
+          </SelectContent>
+        </Select>
+        {datePreset === "custom" && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !customDate && "text-muted-foreground")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {customDate ? format(customDate, "PP") : "Pick date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={customDate} onSelect={d => { setCustomDate(d); setPage(0); }} initialFocus className="p-3 pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
 
       <div className="table-container overflow-x-auto">
@@ -127,6 +203,20 @@ export default function ProcessedPage() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+              Next <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {selectedId && (
         <TransactionDetailModal
