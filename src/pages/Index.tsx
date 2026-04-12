@@ -1,8 +1,17 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { LayoutDashboard, CheckCircle, DollarSign, Target } from "lucide-react";
+import { LayoutDashboard, CheckCircle, DollarSign, Target, CalendarIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format, startOfDay, endOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
+
+type DatePreset = "all" | "today" | "week" | "month" | "custom";
 
 function MetricCard({ label, value, icon: Icon, sub }: { label: string; value: string; icon: any; sub?: string }) {
   return (
@@ -30,12 +39,38 @@ function MetricSkeleton() {
 }
 
 export default function Index() {
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customDate, setCustomDate] = useState<Date | undefined>();
+
+  const getDateRange = (): { from?: string; to?: string } => {
+    const now = new Date();
+    switch (datePreset) {
+      case "today":
+        return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+      case "week":
+        return { from: startOfWeek(now, { weekStartsOn: 6 }).toISOString(), to: endOfDay(now).toISOString() };
+      case "month":
+        return { from: startOfMonth(now).toISOString(), to: endOfDay(now).toISOString() };
+      case "custom":
+        if (customDate) return { from: startOfDay(customDate).toISOString(), to: endOfDay(customDate).toISOString() };
+        return {};
+      default:
+        return {};
+    }
+  };
+
   const { data: screenshots, isLoading: loadingScreenshots } = useQuery({
-    queryKey: ["dashboard-stats"],
+    queryKey: ["dashboard-stats", datePreset, customDate?.toISOString()],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("transfer_screenshots")
         .select("id, extracted_amount, matched_person_id, accounting_status, created_at, extracted_phone_normalized, approved_amount");
+
+      const { from, to } = getDateRange();
+      if (from) query = query.gte("created_at", from);
+      if (to) query = query.lte("created_at", to);
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -61,9 +96,38 @@ export default function Index() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Finance operations overview</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Finance operations overview</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={datePreset} onValueChange={v => setDatePreset(v as DatePreset)}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="All time" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All time</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">This week</SelectItem>
+              <SelectItem value="month">This month</SelectItem>
+              <SelectItem value="custom">Pick date</SelectItem>
+            </SelectContent>
+          </Select>
+          {datePreset === "custom" && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !customDate && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {customDate ? format(customDate, "PP") : "Pick date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="single" selected={customDate} onSelect={setCustomDate} initialFocus className="p-3 pointer-events-auto" />
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
