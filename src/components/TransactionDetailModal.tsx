@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { format } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, CheckCircle, XCircle, Link as LinkIcon, UserPlus, Plus, X } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -372,6 +373,12 @@ export function TransactionDetailModal({ screenshotId, onClose }: Props) {
                 <p className="text-xs text-accent-foreground/70">Amount</p>
                 <p className="font-mono text-lg text-accent-foreground">{screenshot.extracted_amount ? `${Number(screenshot.extracted_amount).toLocaleString()} EGP` : "—"}</p>
               </div>
+            </div>
+
+            {/* Date uploaded */}
+            <div className="rounded-lg bg-muted/50 border p-3 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Date Uploaded</p>
+              <p className="text-sm font-medium">{screenshot.created_at ? format(new Date(screenshot.created_at), "PPP 'at' p") : "—"}</p>
             </div>
 
             {/* Transfer summary */}
