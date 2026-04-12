@@ -1,81 +1,58 @@
 
 
-# Production Readiness Audit — Top 5 Critical Fixes
+# What's Missing for Production — TransferMatch
 
-After reviewing all pages (Dashboard, People, PersonProfile, Upload, Processed, Review, TransactionDetailModal), here are the most impactful missing pieces:
-
----
-
-## 1. Loading States (Skeleton Loaders)
-
-**Problem:** Most pages show nothing or a bare "Loading..." text while data fetches. The Dashboard, People list, Processed table, Review queue, and Person Profile all render empty/blank until queries resolve — this feels broken on slower connections.
-
-**Fix:** Add skeleton loaders using the existing `Skeleton` component to Dashboard metric cards, People table rows, Person Profile header + metrics, Processed table, and Review queue cards. Use `isLoading` from `useQuery` to toggle between skeleton and real content.
+After reviewing all pages, auth, edge functions, database schema, and RLS policies, here are the top items ranked by criticality:
 
 ---
 
-## 2. Empty States with Guidance
+## 1. Password Reset Flow (Critical — Auth Gap)
 
-**Problem:** Several screens lack helpful empty states:
-- Person Profile shows an empty table with headers but no message when a person has zero transactions
-- Person Profile shows "No identifiers" but no action prompt
-- Dashboard "Recent Activity" has an empty state but People Directory doesn't guide well
+The login page has no "Forgot Password" link. If a user forgets their password, they're locked out with no recovery path.
 
-**Fix:** Add friendly empty-state messages with action links (e.g., "No transactions yet — upload screenshots to get started") to Person Profile transactions table, and improve the identifiers empty state to suggest editing the person.
+**Fix:** Add a "Forgot Password" button on the Login page that calls `supabase.auth.resetPasswordForEmail()`, and create a `/reset-password` page that handles the recovery token and lets the user set a new password.
 
 ---
 
-## 3. Form Validation (Phone Numbers & Required Fields)
+## 2. Settings Page is Non-Functional (High)
 
-**Problem:** The Add/Edit Person forms accept any text in phone fields — no character restrictions, no format validation feedback. Users can submit gibberish or incomplete numbers. The `normalizePhone` function handles normalization server-side but users get no client-side feedback about invalid entries.
+The Settings page is purely cosmetic — the confidence threshold slider doesn't persist anywhere (it's local `useState`), and it says "Claude Vision" as the extraction engine when you're actually using Gemini Flash via Lovable AI Gateway. No settings are saved to the database.
 
-**Fix:** Add inline validation to phone inputs:
-- Restrict to digits only (strip non-numeric on input or show error)
-- Show a warning badge if the normalized result isn't a valid 11-digit Egyptian number
-- Prevent form submission if the name field is empty (already partially done) or all phone numbers are invalid
-- Add validation to the manual phone/amount fields in TransactionDetailModal
+**Fix:** Either persist the threshold to a `settings` table and use it during auto-matching, or remove the Settings page to avoid confusion. Update the engine label to "Gemini 2.5 Flash".
 
 ---
 
-## 4. Mobile Responsiveness
+## 3. Pagination on Processed & Review Pages (High)
 
-**Problem:** 
-- The 6-column metric grid on Person Profile (`lg:grid-cols-6`) will stack but cards may be too narrow on tablet
-- Tables (People, Processed) use `overflow-x-auto` but column widths aren't optimized for mobile — some columns could be hidden
-- The TransactionDetailModal uses `max-w-4xl` with a 2-column grid that collapses on mobile but the image + form can be very long
-- The Dashboard 5-column grid needs better intermediate breakpoints
+All queries fetch every row with no limit. Once you have 1,000+ transactions, you'll hit the Supabase default 1,000-row limit silently, and performance will degrade.
 
-**Fix:** 
-- Adjust grid breakpoints: `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5` for Dashboard, `grid-cols-2 sm:grid-cols-3 lg:grid-cols-6` for Profile
-- Add `min-w-[640px]` to table wrappers for horizontal scroll on mobile
-- Make TransactionDetailModal responsive: single column on mobile, image constrained to reasonable height
-- Hide less-critical table columns (Confidence, Filename) on small screens using responsive utility classes
+**Fix:** Add cursor-based or offset pagination to the Processed table and Review queue. Show page controls and fetch in batches of 50-100.
 
 ---
 
-## 5. Toast Notifications for All Mutations
+## 4. Date Range Filtering (Medium)
 
-**Problem:** Most mutations already have toast notifications (add/edit/delete person, approve/reject). However:
-- The Upload page shows toast on error but not on individual success
-- Manual extraction save in TransactionDetailModal shows generic "Updated" — could be more descriptive
-- No confirmation dialog before destructive actions (delete person)
+Dashboard volumes and the Processed table have no date filtering. In production, users need to see "this week's volume" or "this month's transactions" — not all-time totals mixed together.
 
-**Fix:**
-- Add success toasts with transaction codes on upload completion
-- Improve toast messages to be more descriptive (e.g., "Approved TX-20260412-003 for 5,000 EGP")
-- Add a confirmation dialog before deleting a person (using AlertDialog component)
+**Fix:** Add a date range picker (today / this week / this month / custom) to the Dashboard and Processed page that filters the queries.
+
+---
+
+## 5. Logout Doesn't Clear Query Cache (Medium)
+
+When a user logs out and another logs in, the React Query cache may still hold the previous user's data until queries refetch.
+
+**Fix:** Call `queryClient.clear()` on logout before navigating to `/login`.
 
 ---
 
 ## Technical Summary
 
-| # | Area | Files to Edit |
-|---|------|--------------|
-| 1 | Skeleton loaders | Index.tsx, PeoplePage.tsx, PersonProfile.tsx, ProcessedPage.tsx, ReviewPage.tsx |
-| 2 | Empty states | PersonProfile.tsx |
-| 3 | Form validation | PeoplePage.tsx, TransactionDetailModal.tsx |
-| 4 | Mobile responsiveness | Index.tsx, PersonProfile.tsx, ProcessedPage.tsx, PeoplePage.tsx, TransactionDetailModal.tsx |
-| 5 | Toast & confirmations | UploadPage.tsx, TransactionDetailModal.tsx, PeoplePage.tsx |
-
-No database changes required. No new dependencies needed — all components (Skeleton, AlertDialog, toast) already exist in the project.
+| # | Item | Files to Create/Edit | DB Changes |
+|---|------|---------------------|------------|
+| 1 | Password reset | Login.tsx (edit), ResetPassword.tsx (new), App.tsx (add route) | None |
+| 2 | Fix Settings | SettingsPage.tsx (edit or remove) | Optional: `app_settings` table |
+| 3 | Pagination | ProcessedPage.tsx, ReviewPage.tsx | None |
+| 4 | Date filtering | Index.tsx, ProcessedPage.tsx | None |
+| 5 | Logout cache clear | AppSidebar.tsx | None |
 
