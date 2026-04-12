@@ -15,6 +15,7 @@ import PeoplePage from "./pages/PeoplePage";
 import PersonProfile from "./pages/PersonProfile";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route element={<AuthGuard><AppLayout /></AuthGuard>}>
             <Route path="/" element={<Index />} />
             <Route path="/upload" element={<UploadPage />} />
