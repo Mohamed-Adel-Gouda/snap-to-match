@@ -167,6 +167,7 @@ export default function ProcessedPage() {
               <th className="px-4 py-3 font-medium text-right">Amount</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">Confidence</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium hidden md:table-cell">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -180,10 +181,11 @@ export default function ProcessedPage() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-16 ml-auto" /></td>
                   <td className="px-4 py-3 hidden lg:table-cell"><Skeleton className="h-5 w-12" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-5 w-16" /></td>
+                  <td className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-20" /></td>
                 </tr>
               ))
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">No records found</td></tr>
+              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No records found</td></tr>
             ) : (
               filtered.map(s => (
                 <tr key={s.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(s.id)}>
@@ -213,6 +215,9 @@ export default function ProcessedPage() {
                     }`}>
                       {s.accounting_status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-xs text-muted-foreground">
+                    {s.created_at ? format(new Date(s.created_at), "MMM d, yyyy") : "—"}
                   </td>
                 </tr>
               ))
