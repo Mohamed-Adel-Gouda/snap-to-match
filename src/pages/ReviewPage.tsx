@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
 import { AlertTriangle, Clock, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { TransactionDetailModal } from "@/components/TransactionDetailModal";
@@ -99,7 +100,7 @@ export default function ReviewPage() {
               </div>
               <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
-                {new Date(item.created_at).toLocaleDateString()}
+                {item.created_at ? format(new Date(item.created_at), "MMM d, yyyy 'at' p") : "—"}
               </div>
             </div>
           ))
