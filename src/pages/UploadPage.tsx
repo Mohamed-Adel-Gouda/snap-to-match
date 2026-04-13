@@ -50,28 +50,43 @@ export default function UploadPage() {
         .select("id, transaction_code")
         .eq("image_fingerprint", fingerprint);
 
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const { count } = await supabase
-        .from("transfer_screenshots")
-        .select("id", { count: "exact", head: true })
-        .like("transaction_code", `TX-${today}-%`);
-      const txCode = generateTransactionCode(count || 0);
-
       const { data: user } = await supabase.auth.getUser();
-      const { data: record, error: insertError } = await supabase
-        .from("transfer_screenshots")
-        .insert({
-          transaction_code: txCode,
-          filename: file.name,
-          storage_path: storagePath,
-          image_fingerprint: fingerprint,
-          uploaded_by: user.user?.id,
-          extraction_status: "processing",
-          accounting_status: dupes && dupes.length > 0 ? "duplicate_review" : "pending",
-        })
-        .select()
-        .single();
-      if (insertError) throw insertError;
+
+      let record: any = null;
+      let txCode = "";
+      const maxRetries = 5;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const { count } = await supabase
+          .from("transfer_screenshots")
+          .select("id", { count: "exact", head: true })
+          .like("transaction_code", `TX-${today}-%`);
+        txCode = generateTransactionCode((count || 0) + attempt);
+
+        const { data, error: insertError } = await supabase
+          .from("transfer_screenshots")
+          .insert({
+            transaction_code: txCode,
+            filename: file.name,
+            storage_path: storagePath,
+            image_fingerprint: fingerprint,
+            uploaded_by: user.user?.id,
+            extraction_status: "processing",
+            accounting_status: dupes && dupes.length > 0 ? "duplicate_review" : "pending",
+          })
+          .select()
+          .single();
+
+        if (!insertError) {
+          record = data;
+          break;
+        }
+        if (insertError.message?.includes("duplicate key") && attempt < maxRetries - 1) {
+          continue;
+        }
+        throw insertError;
+      }
+      if (!record) throw new Error("Failed to create record after retries");
 
       if (dupes && dupes.length > 0) {
         for (const dupe of dupes) {
