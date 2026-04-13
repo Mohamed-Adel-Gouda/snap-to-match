@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phone-utils";
+import { linkOrphanedUploads } from "@/lib/link-orphaned-uploads";
 
 interface Props {
   screenshotId: string;
