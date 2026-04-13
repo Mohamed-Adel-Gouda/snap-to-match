@@ -135,21 +135,29 @@ export default function PeoplePage() {
         );
         if (idError) throw idError;
       }
-      return person;
+
+      const normalizedPhones = validPhones.map(p => normalizePhone(p.phone)).filter(Boolean);
+      const linked = await linkOrphanedUploads(person.id, normalizedPhones);
+      return { person, linked };
     },
-    onSuccess: (person) => {
+    onSuccess: ({ person, linked }) => {
       queryClient.invalidateQueries({ queryKey: ["people"] });
+      queryClient.invalidateQueries({ queryKey: ["screenshots"] });
       setName("");
       setPhones([{ phone: "", type: "primary_phone" }]);
       setAddOpen(false);
-      toast.success(`${person.full_name} added successfully`);
+      if (linked > 0) {
+        toast.success(`${person.full_name} added! ${linked} previous upload(s) were automatically assigned.`);
+      } else {
+        toast.success(`${person.full_name} added successfully`);
+      }
     },
     onError: (err: any) => toast.error(err.message),
   });
 
   const updatePerson = useMutation({
     mutationFn: async () => {
-      if (!editId) return;
+      if (!editId) return { linked: 0 };
       const { error } = await supabase.from("people").update({ full_name: editName }).eq("id", editId);
       if (error) throw error;
 
@@ -169,11 +177,21 @@ export default function PeoplePage() {
         );
         if (idError) throw idError;
       }
+
+      const normalizedPhones = validPhones.map(p => normalizePhone(p.phone)).filter(Boolean);
+      const linked = await linkOrphanedUploads(editId, normalizedPhones);
+      return { linked };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["people"] });
+      queryClient.invalidateQueries({ queryKey: ["screenshots"] });
       setEditOpen(false);
-      toast.success(`${editName} updated successfully`);
+      const linked = result?.linked || 0;
+      if (linked > 0) {
+        toast.success(`${editName} updated! ${linked} previous upload(s) were automatically assigned.`);
+      } else {
+        toast.success(`${editName} updated successfully`);
+      }
     },
     onError: (err: any) => toast.error(err.message),
   });
