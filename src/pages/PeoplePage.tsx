@@ -13,6 +13,22 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 
+async function linkOrphanedUploads(personId: string, normalizedPhones: string[]): Promise<number> {
+  if (normalizedPhones.length === 0) return 0;
+  const { data, error } = await supabase
+    .from("transfer_screenshots")
+    .update({
+      matched_person_id: personId,
+      match_type: "retroactive",
+      auto_matched: true,
+    })
+    .is("matched_person_id", null)
+    .in("extracted_phone_normalized", normalizedPhones)
+    .select("id");
+  if (error) throw error;
+  return data?.length || 0;
+}
+
 interface PhoneEntry {
   id?: string;
   phone: string;
@@ -119,21 +135,29 @@ export default function PeoplePage() {
         );
         if (idError) throw idError;
       }
-      return person;
+
+      const normalizedPhones = validPhones.map(p => normalizePhone(p.phone)).filter(Boolean);
+      const linked = await linkOrphanedUploads(person.id, normalizedPhones);
+      return { person, linked };
     },
-    onSuccess: (person) => {
+    onSuccess: ({ person, linked }) => {
       queryClient.invalidateQueries({ queryKey: ["people"] });
+      queryClient.invalidateQueries({ queryKey: ["screenshots"] });
       setName("");
       setPhones([{ phone: "", type: "primary_phone" }]);
       setAddOpen(false);
-      toast.success(`${person.full_name} added successfully`);
+      if (linked > 0) {
+        toast.success(`${person.full_name} added! ${linked} previous upload(s) were automatically assigned.`);
+      } else {
+        toast.success(`${person.full_name} added successfully`);
+      }
     },
     onError: (err: any) => toast.error(err.message),
   });
 
   const updatePerson = useMutation({
     mutationFn: async () => {
-      if (!editId) return;
+      if (!editId) return { linked: 0 };
       const { error } = await supabase.from("people").update({ full_name: editName }).eq("id", editId);
       if (error) throw error;
 
@@ -153,11 +177,21 @@ export default function PeoplePage() {
         );
         if (idError) throw idError;
       }
+
+      const normalizedPhones = validPhones.map(p => normalizePhone(p.phone)).filter(Boolean);
+      const linked = await linkOrphanedUploads(editId, normalizedPhones);
+      return { linked };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["people"] });
+      queryClient.invalidateQueries({ queryKey: ["screenshots"] });
       setEditOpen(false);
-      toast.success(`${editName} updated successfully`);
+      const linked = result?.linked || 0;
+      if (linked > 0) {
+        toast.success(`${editName} updated! ${linked} previous upload(s) were automatically assigned.`);
+      } else {
+        toast.success(`${editName} updated successfully`);
+      }
     },
     onError: (err: any) => toast.error(err.message),
   });
