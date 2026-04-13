@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phone-utils";
+import { linkOrphanedUploads } from "@/lib/link-orphaned-uploads";
 
 interface Props {
   screenshotId: string;
@@ -67,7 +68,15 @@ function AddPersonInline({
         );
         if (idError) throw idError;
       }
-      toast.success("Person created & linked");
+
+      // Retroactive linking of orphaned uploads
+      const normalizedPhones = validPhones.map(p => normalizePhone(p.phone)).filter(Boolean);
+      const linked = await linkOrphanedUploads(person.id, normalizedPhones);
+      if (linked > 0) {
+        toast.success(`Person created & linked! ${linked} previous upload(s) also assigned.`);
+      } else {
+        toast.success("Person created & linked");
+      }
       onCreated(person.id);
     } catch (err: any) {
       toast.error(err.message);
