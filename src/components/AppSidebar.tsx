@@ -8,6 +8,7 @@ import {
   FileBarChart,
   Settings,
   LogOut,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +23,7 @@ const navItems = [
   { to: "/people", label: "People", icon: Users },
   { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/help", label: "Instructions", icon: HelpCircle },
 ];
 
 export function AppSidebar() {
