@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Pencil, X } from "lucide-react";
+import CsvImportDialog from "@/components/CsvImportDialog";
 import { normalizePhone } from "@/lib/phone-utils";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -217,9 +218,14 @@ export default function PeoplePage() {
           <h1 className="text-2xl font-bold">People</h1>
           <p className="text-muted-foreground">{people?.length || 0} registered</p>
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />Add Person</Button>
+        <div className="flex gap-2">
+          <CsvImportDialog onComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ["people"] });
+            queryClient.invalidateQueries({ queryKey: ["screenshots"] });
+          }} />
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" />Add Person</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>Add Person</DialogTitle></DialogHeader>
@@ -232,7 +238,8 @@ export default function PeoplePage() {
               <Button className="w-full" onClick={() => addPerson.mutate()} disabled={!name.trim()}>Add Person</Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* Edit Dialog */}
