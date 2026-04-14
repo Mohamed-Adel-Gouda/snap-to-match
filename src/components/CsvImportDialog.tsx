@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phone-utils";
 import { linkOrphanedUploads } from "@/lib/link-orphaned-uploads";
@@ -166,9 +166,28 @@ export default function CsvImportDialog({ onComplete }: { onComplete: () => void
         {!result ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">name</code>, <code className="text-xs bg-muted px-1 rounded">phone</code>, and optionally <code className="text-xs bg-muted px-1 rounded">alternate_phone</code>, <code className="text-xs bg-muted px-1 rounded">wallet</code>, <code className="text-xs bg-muted px-1 rounded">bank_account</code>
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">name</code>, <code className="text-xs bg-muted px-1 rounded">phone</code>
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-xs h-auto p-0"
+                  onClick={() => {
+                    const csv = "name,phone,alternate_phone,wallet\nأحمد محمد,01012345678,01112345678,01212345678\nسارة علي,01098765432,,\nمحمد حسن,01551234567,01021234567,";
+                    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "people_template.csv";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="mr-1 h-3 w-3" />Download template
+                </Button>
+              </div>
               <input
                 ref={fileRef}
                 type="file"
