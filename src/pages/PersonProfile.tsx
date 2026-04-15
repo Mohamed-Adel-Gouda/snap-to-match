@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images, Download, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import JSZip from "jszip";
+import { toast } from "sonner";
 
 export default function PersonProfile() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +19,7 @@ export default function PersonProfile() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
@@ -61,6 +64,35 @@ export default function PersonProfile() {
   const getImageUrl = (storagePath: string) => {
     const { data } = supabase.storage.from("transfer-screenshots").getPublicUrl(storagePath);
     return data?.publicUrl || "";
+  };
+
+  const downloadAllImages = async () => {
+    if (filteredScreenshots.length === 0) return;
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      const results = await Promise.all(
+        filteredScreenshots.map(async (s, idx) => {
+          const url = getImageUrl(s.storage_path);
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const ext = s.filename?.split('.').pop() || 'jpg';
+          return { name: `${idx + 1}_${s.transaction_code}.${ext}`, blob };
+        })
+      );
+      results.forEach(r => zip.file(r.name, r.blob));
+      const content = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(content);
+      a.download = `${person?.full_name || "screenshots"}_${filteredScreenshots.length}_images.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(`Downloaded ${filteredScreenshots.length} screenshots`);
+    } catch (err) {
+      toast.error("Failed to download images");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loadingPerson) {
@@ -313,14 +345,20 @@ export default function PersonProfile() {
       <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              All Screenshots ({filteredScreenshots.length})
-              {hasDateFilter && (
-                <span className="text-sm font-normal text-muted-foreground ml-2">
-                  {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
-                </span>
-              )}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>
+                All Screenshots ({filteredScreenshots.length})
+                {hasDateFilter && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
+                  </span>
+                )}
+              </DialogTitle>
+              <Button size="sm" onClick={downloadAllImages} disabled={downloading} className="mr-6">
+                {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {downloading ? "Downloading..." : "Download All as ZIP"}
+              </Button>
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             {filteredScreenshots.map((s, idx) => (
