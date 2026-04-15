@@ -66,6 +66,35 @@ export default function PersonProfile() {
     return data?.publicUrl || "";
   };
 
+  const downloadAllImages = async () => {
+    if (filteredScreenshots.length === 0) return;
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      const results = await Promise.all(
+        filteredScreenshots.map(async (s, idx) => {
+          const url = getImageUrl(s.storage_path);
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const ext = s.filename?.split('.').pop() || 'jpg';
+          return { name: `${idx + 1}_${s.transaction_code}.${ext}`, blob };
+        })
+      );
+      results.forEach(r => zip.file(r.name, r.blob));
+      const content = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(content);
+      a.download = `${person?.full_name || "screenshots"}_${filteredScreenshots.length}_images.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(`Downloaded ${filteredScreenshots.length} screenshots`);
+    } catch (err) {
+      toast.error("Failed to download images");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loadingPerson) {
     return (
       <div className="space-y-6 p-4">
