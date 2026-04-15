@@ -345,14 +345,20 @@ export default function PersonProfile() {
       <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              All Screenshots ({filteredScreenshots.length})
-              {hasDateFilter && (
-                <span className="text-sm font-normal text-muted-foreground ml-2">
-                  {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
-                </span>
-              )}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>
+                All Screenshots ({filteredScreenshots.length})
+                {hasDateFilter && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
+                  </span>
+                )}
+              </DialogTitle>
+              <Button size="sm" onClick={downloadAllImages} disabled={downloading} className="mr-6">
+                {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {downloading ? "Downloading..." : "Download All as ZIP"}
+              </Button>
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             {filteredScreenshots.map((s, idx) => (
