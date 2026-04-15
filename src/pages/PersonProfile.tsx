@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 export default function PersonProfile() {
   const { id } = useParams<{ id: string }>();
   const [selectedScreenshot, setSelectedScreenshot] = useState<any>(null);
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
@@ -33,6 +40,22 @@ export default function PersonProfile() {
     },
     enabled: !!id,
   });
+
+  const filteredScreenshots = useMemo(() => {
+    if (!screenshots) return [];
+    return screenshots.filter(s => {
+      const d = new Date(s.created_at!);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    });
+  }, [screenshots, dateFrom, dateTo]);
+
+  const hasDateFilter = dateFrom || dateTo;
 
   const getImageUrl = (storagePath: string) => {
     const { data } = supabase.storage.from("transfer-screenshots").getPublicUrl(storagePath);
@@ -63,11 +86,11 @@ export default function PersonProfile() {
 
   const identifiers = (person.person_identifiers || []) as any[];
   const primaryPhone = identifiers.find((i: any) => i.identifier_type === "primary_phone");
-  const totalMatched = screenshots?.length || 0;
-  const autoMatched = screenshots?.filter(s => s.auto_matched).length || 0;
+  const totalMatched = filteredScreenshots.length;
+  const autoMatched = filteredScreenshots.filter(s => s.auto_matched).length;
   const manualMatched = totalMatched - autoMatched;
-  const activeVolume = screenshots?.filter(s => s.accounting_status !== 'rejected').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
-  const approvedVolume = screenshots?.filter(s => s.accounting_status === 'approved').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0) || 0;
+  const activeVolume = filteredScreenshots.filter(s => s.accounting_status !== 'rejected').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0);
+  const approvedVolume = filteredScreenshots.filter(s => s.accounting_status === 'approved').reduce((sum, s) => sum + (Number(s.approved_amount || s.extracted_amount) || 0), 0);
 
   const iconForType = (type: string) => {
     if (type.includes("phone")) return Phone;
@@ -92,6 +115,42 @@ export default function PersonProfile() {
             {primaryPhone && <span className="font-mono text-sm text-muted-foreground">{primaryPhone.normalized_value}</span>}
           </div>
         </div>
+      </div>
+
+      {/* Date filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dateFrom && "text-muted-foreground")}>
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "From date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} initialFocus className="p-3 pointer-events-auto" />
+          </PopoverContent>
+        </Popover>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dateTo && "text-muted-foreground")}>
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateTo ? format(dateTo, "dd/MM/yyyy") : "To date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={dateTo} onSelect={setDateTo} initialFocus className="p-3 pointer-events-auto" />
+          </PopoverContent>
+        </Popover>
+        {hasDateFilter && (
+          <Button variant="ghost" size="sm" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>
+            Clear
+          </Button>
+        )}
+        {hasDateFilter && (
+          <span className="text-sm text-muted-foreground ml-2">
+            Showing {filteredScreenshots.length} of {screenshots?.length || 0} screenshots
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -136,7 +195,7 @@ export default function PersonProfile() {
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : screenshots && screenshots.length > 0 ? (
+          ) : filteredScreenshots.length > 0 ? (
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="border-b bg-muted/50 text-left">
@@ -149,7 +208,7 @@ export default function PersonProfile() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {screenshots.map(s => (
+                {filteredScreenshots.map(s => (
                   <tr
                     key={s.id}
                     className="hover:bg-muted/30 cursor-pointer transition-colors"
@@ -176,8 +235,8 @@ export default function PersonProfile() {
           ) : (
             <div className="px-6 py-12 text-center">
               <Upload className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">No transactions yet.</p>
-              <Link to="/upload" className="text-xs text-accent hover:underline mt-1 inline-block">Upload screenshots to get started</Link>
+              <p className="text-sm text-muted-foreground">{hasDateFilter ? "No screenshots in this date range." : "No transactions yet."}</p>
+              {!hasDateFilter && <Link to="/upload" className="text-xs text-accent hover:underline mt-1 inline-block">Upload screenshots to get started</Link>}
             </div>
           )}
         </div>
