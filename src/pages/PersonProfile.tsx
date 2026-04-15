@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images, Download, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import JSZip from "jszip";
+import { toast } from "sonner";
 
 export default function PersonProfile() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +19,7 @@ export default function PersonProfile() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
