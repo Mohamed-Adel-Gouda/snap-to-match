@@ -308,6 +308,46 @@ export default function PersonProfile() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Gallery Dialog */}
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              All Screenshots ({filteredScreenshots.length})
+              {hasDateFilter && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {filteredScreenshots.map((s, idx) => (
+              <div key={s.id} className="rounded-lg border overflow-hidden">
+                <div className="flex items-center justify-between bg-muted/50 px-4 py-2 text-xs">
+                  <span className="font-mono">{s.transaction_code}</span>
+                  <div className="flex items-center gap-3">
+                    <span>{new Date(s.created_at!).toLocaleDateString()}</span>
+                    <span className="font-mono font-medium">
+                      {s.approved_amount || s.extracted_amount ? `${Number(s.approved_amount || s.extracted_amount).toLocaleString()} EGP` : "—"}
+                    </span>
+                    <span className={`status-badge ${s.accounting_status === 'approved' ? 'status-approved' : s.accounting_status === 'rejected' ? 'status-rejected' : 'status-pending'}`}>
+                      {s.accounting_status}
+                    </span>
+                  </div>
+                </div>
+                <img
+                  src={getImageUrl(s.storage_path)}
+                  alt={`Screenshot ${idx + 1}`}
+                  className="w-full h-auto"
+                  loading="lazy"
+                />
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
