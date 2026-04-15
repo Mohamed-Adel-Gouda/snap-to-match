@@ -1,40 +1,40 @@
 
 
-# Retroactive Data-Linking for New Phone Numbers
+# Drag-and-Drop Images from Gallery
 
-## What
+## Problem
+Currently the only way to get all images out is via ZIP download. The user wants to drag images directly into chat apps or file explorers.
 
-When a person is created or edited with phone numbers, automatically find all `transfer_screenshots` records that have a matching `extracted_phone_normalized` but no `matched_person_id`, link them to this person, and show a toast summarizing how many were linked.
+## Options Considered
 
-## How
+1. **Clipboard Copy** — Use the Clipboard API to copy image(s) to clipboard for pasting. Limited: only supports one image at a time in most browsers, and only PNG format.
 
-### 1. Create a reusable linking function
+2. **Native HTML5 Drag** — Make each image in the gallery individually draggable so you can drag it into WhatsApp Web, Telegram, file explorer, etc. This works natively in browsers. However, dragging *multiple* images at once from a webpage is not reliably supported by browsers.
 
-Add a helper function (in `PeoplePage.tsx` or a shared util) that:
-- Takes a `person_id` and array of normalized phone numbers
-- Queries `transfer_screenshots` where `extracted_phone_normalized` is in the phone list AND `matched_person_id` is null
-- Batch updates those rows to set `matched_person_id`, `match_type = 'retroactive'`, `auto_matched = true`
-- Returns the count of linked records
+3. **"Open all in new tabs"** — Open each image in its own browser tab, then the user can drag from tabs or save individually. Clunky but works.
 
-### 2. Integrate into Add Person flow
+4. **Generate a temporary folder link** — Not feasible without a backend file-serving layer.
 
-After the person and identifiers are inserted successfully (in `addPerson.onSuccess` or end of `mutationFn`):
-- Call the linking function with the new person's ID and their normalized phones
-- Show toast: "Person saved! X previous uploads were automatically assigned." (or just the standard toast if 0 linked)
+## Recommended Approach
 
-### 3. Integrate into Edit Person flow
+**Option 2: Native draggable images** — the most natural UX. Each image in the gallery gets `draggable="true"` with a proper `dragstart` handler that sets the image URL as drag data. Users can drag any image directly into a chat app or desktop. Combined with a "Copy image" button on each image for clipboard pasting.
 
-After the person's identifiers are updated (in `updatePerson.mutationFn`):
-- Call the same linking function with the person's ID and their new normalized phones
-- Show appropriate toast in `onSuccess`
+### Implementation
 
-### 4. No DB migration needed
+**File: `src/pages/PersonProfile.tsx`**
 
-The `transfer_screenshots` table already has `matched_person_id`, `match_type`, and `auto_matched` columns. We just need to update rows client-side via the Supabase SDK. RLS already allows authenticated users to update screenshots.
+In the gallery dialog, for each screenshot card:
+- Add `draggable="true"` to each `<img>` element
+- Add an `onDragStart` handler that sets `dataTransfer` with the image URL and filename
+- Add a small "Copy" icon button overlay on each image that copies it to clipboard via `fetch` + `navigator.clipboard.write`
+- Add a brief tooltip/instruction at the top of the gallery: *"Drag any image to a chat or click the copy icon"*
 
-## Files
+### Limitations (noted in UI)
+- Dragging multiple images at once is a browser limitation — users drag one at a time
+- Clipboard copy works best with PNG; some browsers may not support it for JPEG
 
+### Single file change
 | Action | File |
 |--------|------|
-| Edit | `src/pages/PeoplePage.tsx` — add linking logic to both add and edit mutations |
+| Edit | `src/pages/PersonProfile.tsx` — add drag handlers and copy buttons to gallery images |
 
