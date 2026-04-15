@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ export default function PersonProfile() {
   const [selectedScreenshot, setSelectedScreenshot] = useState<any>(null);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
@@ -150,6 +151,12 @@ export default function PersonProfile() {
           <span className="text-sm text-muted-foreground ml-2">
             Showing {filteredScreenshots.length} of {screenshots?.length || 0} screenshots
           </span>
+        )}
+        {filteredScreenshots.length > 0 && (
+          <Button variant="outline" size="sm" onClick={() => setGalleryOpen(true)} className="ml-auto">
+            <Images className="mr-2 h-4 w-4" />
+            View All Images ({filteredScreenshots.length})
+          </Button>
         )}
       </div>
 
@@ -299,6 +306,46 @@ export default function PersonProfile() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Gallery Dialog */}
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              All Screenshots ({filteredScreenshots.length})
+              {hasDateFilter && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "..."} — {dateTo ? format(dateTo, "dd/MM/yyyy") : "..."}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {filteredScreenshots.map((s, idx) => (
+              <div key={s.id} className="rounded-lg border overflow-hidden">
+                <div className="flex items-center justify-between bg-muted/50 px-4 py-2 text-xs">
+                  <span className="font-mono">{s.transaction_code}</span>
+                  <div className="flex items-center gap-3">
+                    <span>{new Date(s.created_at!).toLocaleDateString()}</span>
+                    <span className="font-mono font-medium">
+                      {s.approved_amount || s.extracted_amount ? `${Number(s.approved_amount || s.extracted_amount).toLocaleString()} EGP` : "—"}
+                    </span>
+                    <span className={`status-badge ${s.accounting_status === 'approved' ? 'status-approved' : s.accounting_status === 'rejected' ? 'status-rejected' : 'status-pending'}`}>
+                      {s.accounting_status}
+                    </span>
+                  </div>
+                </div>
+                <img
+                  src={getImageUrl(s.storage_path)}
+                  alt={`Screenshot ${idx + 1}`}
+                  className="w-full h-auto"
+                  loading="lazy"
+                />
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
