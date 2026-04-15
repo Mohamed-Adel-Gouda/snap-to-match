@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ export default function PersonProfile() {
   const [selectedScreenshot, setSelectedScreenshot] = useState<any>(null);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
@@ -150,6 +151,12 @@ export default function PersonProfile() {
           <span className="text-sm text-muted-foreground ml-2">
             Showing {filteredScreenshots.length} of {screenshots?.length || 0} screenshots
           </span>
+        )}
+        {filteredScreenshots.length > 0 && (
+          <Button variant="outline" size="sm" onClick={() => setGalleryOpen(true)} className="ml-auto">
+            <Images className="mr-2 h-4 w-4" />
+            View All Images ({filteredScreenshots.length})
+          </Button>
         )}
       </div>
 
