@@ -401,6 +401,13 @@ export default function PersonProfile() {
               </Button>
             </div>
           </DialogHeader>
+          <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+            <GripVertical className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-foreground">Tip:</strong> Drag any image directly into WhatsApp, Telegram, or your file explorer.
+              You can also click the copy icon to paste it anywhere.
+            </span>
+          </div>
           <div className="space-y-4">
             {filteredScreenshots.map((s, idx) => (
               <div key={s.id} className="rounded-lg border overflow-hidden">
@@ -416,12 +423,28 @@ export default function PersonProfile() {
                     </span>
                   </div>
                 </div>
-                <img
-                  src={getImageUrl(s.storage_path)}
-                  alt={`Screenshot ${idx + 1}`}
-                  className="w-full h-auto"
-                  loading="lazy"
-                />
+                <div className="relative group">
+                  <img
+                    src={getImageUrl(s.storage_path)}
+                    alt={`Screenshot ${idx + 1}`}
+                    className="w-full h-auto cursor-grab active:cursor-grabbing"
+                    loading="lazy"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, s)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => copyImageToClipboard(s)}
+                    className="absolute top-2 right-2 h-8 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    {copiedId === s.id ? (
+                      <><Check className="mr-1 h-3 w-3" /> Copied</>
+                    ) : (
+                      <><Copy className="mr-1 h-3 w-3" /> Copy</>
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
