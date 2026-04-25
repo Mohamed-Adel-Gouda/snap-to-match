@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Phone, CreditCard, Hash, Upload, CalendarIcon, Images, Download, Loader2, Copy, Check, GripVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export default function PersonProfile() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
@@ -92,6 +93,46 @@ export default function PersonProfile() {
       toast.error("Failed to download images");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent<HTMLImageElement>, s: any) => {
+    const url = getImageUrl(s.storage_path);
+    const ext = s.filename?.split('.').pop() || 'jpg';
+    const name = `${s.transaction_code}.${ext}`;
+    // Standard drag data — most chat apps & file managers accept these
+    e.dataTransfer.setData("text/uri-list", url);
+    e.dataTransfer.setData("text/plain", url);
+    e.dataTransfer.setData("DownloadURL", `image/${ext}:${name}:${url}`);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const copyImageToClipboard = async (s: any) => {
+    try {
+      const url = getImageUrl(s.storage_path);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      // Clipboard API requires PNG in most browsers — convert if needed
+      let finalBlob = blob;
+      if (blob.type !== "image/png") {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(bitmap, 0, 0);
+        finalBlob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((b) => resolve(b!), "image/png")
+        );
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": finalBlob }),
+      ]);
+      setCopiedId(s.id);
+      toast.success("Image copied — paste it anywhere");
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      toast.error("Couldn't copy image. Try dragging it instead.");
     }
   };
 
@@ -360,6 +401,13 @@ export default function PersonProfile() {
               </Button>
             </div>
           </DialogHeader>
+          <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+            <GripVertical className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-foreground">Tip:</strong> Drag any image directly into WhatsApp, Telegram, or your file explorer.
+              You can also click the copy icon to paste it anywhere.
+            </span>
+          </div>
           <div className="space-y-4">
             {filteredScreenshots.map((s, idx) => (
               <div key={s.id} className="rounded-lg border overflow-hidden">
@@ -375,12 +423,28 @@ export default function PersonProfile() {
                     </span>
                   </div>
                 </div>
-                <img
-                  src={getImageUrl(s.storage_path)}
-                  alt={`Screenshot ${idx + 1}`}
-                  className="w-full h-auto"
-                  loading="lazy"
-                />
+                <div className="relative group">
+                  <img
+                    src={getImageUrl(s.storage_path)}
+                    alt={`Screenshot ${idx + 1}`}
+                    className="w-full h-auto cursor-grab active:cursor-grabbing"
+                    loading="lazy"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, s)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => copyImageToClipboard(s)}
+                    className="absolute top-2 right-2 h-8 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    {copiedId === s.id ? (
+                      <><Check className="mr-1 h-3 w-3" /> Copied</>
+                    ) : (
+                      <><Copy className="mr-1 h-3 w-3" /> Copy</>
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
