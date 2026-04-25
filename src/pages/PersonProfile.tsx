@@ -20,6 +20,7 @@ export default function PersonProfile() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
     queryKey: ["person", id],
