@@ -96,6 +96,46 @@ export default function PersonProfile() {
     }
   };
 
+  const handleDragStart = (e: React.DragEvent<HTMLImageElement>, s: any) => {
+    const url = getImageUrl(s.storage_path);
+    const ext = s.filename?.split('.').pop() || 'jpg';
+    const name = `${s.transaction_code}.${ext}`;
+    // Standard drag data — most chat apps & file managers accept these
+    e.dataTransfer.setData("text/uri-list", url);
+    e.dataTransfer.setData("text/plain", url);
+    e.dataTransfer.setData("DownloadURL", `image/${ext}:${name}:${url}`);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const copyImageToClipboard = async (s: any) => {
+    try {
+      const url = getImageUrl(s.storage_path);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      // Clipboard API requires PNG in most browsers — convert if needed
+      let finalBlob = blob;
+      if (blob.type !== "image/png") {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(bitmap, 0, 0);
+        finalBlob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((b) => resolve(b!), "image/png")
+        );
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": finalBlob }),
+      ]);
+      setCopiedId(s.id);
+      toast.success("Image copied — paste it anywhere");
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      toast.error("Couldn't copy image. Try dragging it instead.");
+    }
+  };
+
   if (loadingPerson) {
     return (
       <div className="space-y-6 p-4">
